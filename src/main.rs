@@ -42,6 +42,10 @@ use std::env;
 use std::process;
 use std::sync::Arc;
 
+#[cfg(feature = "mimalloc")]
+#[global_allocator]
+static GLOBAL: mimalloc::MiMalloc = mimalloc::MiMalloc;
+
 const ENCRYPTION_NEEDED_523: &str = "523 Encryption Needed: Invalid Unencrypted Mail";
 
 #[tokio::main]
