@@ -8,6 +8,10 @@ authors = ["Chatmail Developers"]
 description = "A mail filtering service used by chatmail relay"
 repository = "https://github.com/chatmail/filtermail"
 
+[features]
+default = []
+mimalloc = ["dep:mimalloc"]
+
 [dependencies]
 async-trait = "0.1.89"
 base64 = "0.22.1"
@@ -23,6 +27,7 @@ lettre = { version = "0.11.19", default-features = false, features = [
 log = "0.4.29"
 env_logger = "0.11.8"
 governor = "0.10.4"
+mimalloc = { version = "0.1.48", optional = true }
 
 [dev-dependencies]
 rstest = "0.26.1"
