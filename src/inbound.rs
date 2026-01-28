@@ -43,6 +43,23 @@ impl SmtpHandler for IncomingBeforeQueueHandler {
         log::debug!("mail_encrypted: {mail_encrypted}");
         log::debug!("is_securejoin: {}", is_securejoin(&message));
 
+        let from_header = message
+            .headers
+            .get_first_value("From")
+            .unwrap_or_default()
+            .trim()
+            .to_string();
+
+        let from_addr = extract_address(&from_header)
+            .ok_or(format!("500 Invalid FROM header: {from_header}"))?;
+
+        if !envelope.mail_from.eq_ignore_ascii_case(&from_addr) {
+            return Err(format!(
+                "500 Invalid FROM <{}> for <{}>",
+                from_addr, envelope.mail_from
+            ));
+        }
+
         // Allow encrypted or securejoin messages
         if mail_encrypted || is_securejoin(&message) {
             log::info!("Incoming: Filtering encrypted mail.");
