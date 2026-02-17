@@ -9,6 +9,7 @@ use std::time::Duration;
 use viadkim::VerificationStatus;
 use viadkim::message_hash::BodyHasherStance;
 use viadkim::verifier::LookupTxt;
+use std::str::FromStr;
 
 // ~500kB when fully saturated (~420B per RDATA + selector).
 // "top 1000 relays" is much more than enough, the limit is mostly to prevent DoS attacks.
@@ -139,30 +140,13 @@ impl DkimVerifier {
     /// domain.
     pub async fn verify(&self, raw_mail: &[u8], from_domain: &str) -> Result<(), String> {
         let (headers, body_start) = {
-            use viadkim::{FieldBody, FieldName, HeaderField};
+            use viadkim::{FieldBody, FieldName, HeaderFields};
 
             let Ok((headers, body_start)) = mailparse::parse_headers(raw_mail) else {
                 return Err("500 Failed to parse message headers".to_string());
             };
 
-            let mut viadkim_headers: Vec<HeaderField> = Vec::new();
-            for header in headers {
-                match (
-                    FieldName::new(header.get_key()),
-                    FieldBody::new(header.get_value_raw()),
-                ) {
-                    (Ok(name), Ok(body)) => viadkim_headers.push((name, body)),
-                    (Err(e), _) | (_, Err(e)) => {
-                        log::debug!("Failed to parse header {header:?}, skipping: {e}");
-                    }
-                }
-            }
-
-            let viadkim_headers = viadkim::HeaderFields::new(viadkim_headers).map_err(|e| {
-                log::error!("Failed to parse headers for DKIM verification: {e}");
-                "500 Failed to parse message headers".to_string()
-            })?;
-
+            let mut viadkim_headers = HeaderFields::from_str(&String::from_utf8_lossy(&raw_mail.get(..body_start).expect("failed to parse raw mail"))).expect("failed to parse headers");
             (viadkim_headers, body_start)
         };
 
