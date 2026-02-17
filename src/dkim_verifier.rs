@@ -44,7 +44,8 @@ impl CachedResolver {
     /// This is technically not correct, and `viadkim` fails to parse such records,
     /// but in practice this is accepted by many implementations.
     fn normalize_rdata(txt_data: &str) -> String {
-        txt_data.replace([' ', '\t', '\n', '\r'], "")
+        //txt_data.replace([' ', '\t', '\n', '\r'], "")
+        r#"v=DKIM1;k=rsa;p=MIIBIjANBgkqhkiG9w0BAQEFAAOCAQ8AMIIBCgKCAQEA5krC4Xi5Wkr6eMlla38LCFmV645E3FLAgsRl2YJ0SrZ4N2Vw1/yH0mefvtk7HYE7ytV7RQl/er2CkSsaHLJSYLmPCBw5CO6PSsBSXuh6DBqdylh/1t9vVQ9p38fTwn9gU1QvplcpRQL9eepRra1k24VMIaVy2ZZcu3LI9zkPsR7o7TyNaeMhsL8ouWInWc1NSid+p0SgliQuwHIejZhlTPE60JLbJE0OR9I4wmq3377H6z/QrO8XeabCgtmTuzE/hTRyIyNS40jql/99pjlhIcjM2U+P2B0FjwYt7BwLHsgANr74ctlnKY+SdH25rNwVpPmkotaULG5SJCByKBkfCwIDAQAB;s=email;t=s"#.to_string()
     }
 
     /// Invalidates the cached RDATA for a given selector and domain.
@@ -210,5 +211,20 @@ impl DkimVerifier {
         }
 
         Err("554 5.7.1 No valid DKIM signature found".to_string())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn test_dkim_verifier() {
+        let env = env_logger::Env::new().filter_or("RUST_LOG", "trace");
+        env_logger::Builder::from_env(env).init();
+
+        let verifier = DkimVerifier::new().unwrap();
+        let raw_mail = include_bytes!("../1.eml");
+        verifier.verify(raw_mail, "abjadiyah.xyz").await.unwrap();
     }
 }
