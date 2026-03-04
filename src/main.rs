@@ -46,6 +46,12 @@ use std::sync::Arc;
 
 const ENCRYPTION_NEEDED_523: &str = "523 Encryption Needed: Invalid Unencrypted Mail";
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Mode {
+    Outgoing,
+    Incoming,
+}
+
 #[tokio::main]
 async fn main() {
     // default to info level
@@ -72,10 +78,14 @@ async fn main() {
         unreachable!("args length checked above")
     };
 
-    if mode != "incoming" && mode != "outgoing" {
-        eprintln!("Error: mode must be 'incoming' or 'outgoing'");
-        process::exit(1);
-    }
+    let mode = match &**mode {
+        "outgoing" => Mode::Outgoing,
+        "incoming" => Mode::Incoming,
+        _ => {
+            eprintln!("Error: mode must be 'incoming' or 'outgoing'");
+            process::exit(1);
+        }
+    };
 
     let config = match Config::from_file(config_path) {
         Ok(c) => c,
@@ -85,7 +95,7 @@ async fn main() {
         }
     };
 
-    if mode == "outgoing" {
+    if mode == Mode::Outgoing {
         let handler = Arc::new(OutgoingBeforeQueueHandler::new(config.clone()));
         let addr = format!("127.0.0.1:{}", config.filtermail_smtp_port);
         let max_size = config.max_message_size;
