@@ -3,7 +3,7 @@ use std::net::SocketAddr;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufStream};
 use tokio::net::TcpSocket;
 
-/// Sends an email using an SMTP server at `localhost:<smtp_port>`.
+/// Sends an email using an SMTP server at `smtp_addr`.
 pub async fn send(smtp_addr: SocketAddr, envelope: &Envelope) -> Result<(), crate::error::Error> {
     let socket = TcpSocket::new_v4()?;
 
