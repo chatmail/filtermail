@@ -52,6 +52,18 @@ enum Mode {
     Incoming,
 }
 
+impl std::str::FromStr for Mode {
+    type Err = &'static str;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "outgoing" => Ok(Mode::Outgoing),
+            "incoming" => Ok(Mode::Incoming),
+            _ => Err("Error: mode must be 'incoming' or 'outgoing'"),
+        }
+    }
+}
+
 #[tokio::main]
 async fn main() {
     // default to info level
@@ -78,11 +90,10 @@ async fn main() {
         unreachable!("args length checked above")
     };
 
-    let mode = match &**mode {
-        "outgoing" => Mode::Outgoing,
-        "incoming" => Mode::Incoming,
-        _ => {
-            eprintln!("Error: mode must be 'incoming' or 'outgoing'");
+    let mode = match mode.parse::<Mode>() {
+        Ok(mode) => mode,
+        Err(e) => {
+            eprintln!("{e}");
             process::exit(1);
         }
     };
