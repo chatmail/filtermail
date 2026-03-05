@@ -85,11 +85,21 @@ async fn main() {
         }
     };
 
+    let listen = env::var("LISTEN_IP").map_or(std::net::Ipv4Addr::LOCALHOST.into(), |s| {
+        match s.parse::<std::net::IpAddr>() {
+            Ok(ip) => ip,
+            Err(e) => {
+                eprintln!("Cannot parse listen address: {e}");
+                process::exit(1);
+            }
+        }
+    });
+
     if mode == "outgoing" {
+        let addr = (listen, config.filtermail_smtp_port);
         let handler = Arc::new(OutgoingBeforeQueueHandler::new(config.clone()));
-        let addr = format!("127.0.0.1:{}", config.filtermail_smtp_port);
         let max_size = config.max_message_size;
-        log::debug!("Outgoing SMTP server listening on {addr}");
+        log::debug!("Outgoing SMTP server listening on {}:{}", addr.0, addr.1);
 
         if let Err(e) = run_smtp_server(&addr, handler, max_size).await {
             eprintln!("Server error: {}", e);
@@ -105,13 +115,13 @@ async fn main() {
             log::warn!("DKIM verification DISABLED! This should not be used in production.");
         }
 
+        let addr = (listen, config.filtermail_smtp_port_incoming);
         let handler = Arc::new(
             // We want to panic here if the handler cannot be created.
             IncomingBeforeQueueHandler::new(config.clone(), skip_dkim).unwrap(),
         );
-        let addr = format!("127.0.0.1:{}", config.filtermail_smtp_port_incoming);
         let max_size = config.max_message_size;
-        log::debug!("Incoming SMTP server listening on {addr}");
+        log::debug!("Incoming SMTP server listening on {}:{}", addr.0, addr.1);
 
         if let Err(e) = run_smtp_server(&addr, handler, max_size).await {
             eprintln!("Server error: {}", e);
