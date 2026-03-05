@@ -41,7 +41,7 @@ use inbound::IncomingBeforeQueueHandler;
 use outbound::OutgoingBeforeQueueHandler;
 use smtp_server::run_smtp_server;
 use std::env;
-use std::net::{IpAddr, Ipv4Addr, ToSocketAddrs};
+use std::net::{IpAddr, SocketAddr, ToSocketAddrs};
 use std::process;
 use std::sync::Arc;
 
@@ -86,21 +86,10 @@ async fn main() {
         }
     };
 
-    let listen =
-        env::var("LISTEN_IP").map_or(Ipv4Addr::LOCALHOST.into(), |s| match s.parse::<IpAddr>() {
-            Ok(ip) => ip,
-            Err(e) => {
-                eprintln!("Cannot parse listen address: {e}");
-                process::exit(1);
-            }
-        });
-
-    let postfix =
-        env::var("POSTFIX_HOST").map_or(Ipv4Addr::LOCALHOST.into(), |s| resolve_postfix_host(&s));
-
+    let host = config.filtermail_smtp_host;
     if mode == "outgoing" {
-        let addr = (listen, config.filtermail_smtp_port);
-        let handler = Arc::new(OutgoingBeforeQueueHandler::new(config.clone(), postfix));
+        let addr = (host, config.filtermail_smtp_port);
+        let handler = Arc::new(OutgoingBeforeQueueHandler::new(config.clone()).unwrap());
         let max_size = config.max_message_size;
         log::debug!("Outgoing SMTP server listening on {}:{}", addr.0, addr.1);
 
@@ -118,10 +107,10 @@ async fn main() {
             log::warn!("DKIM verification DISABLED! This should not be used in production.");
         }
 
-        let addr = (listen, config.filtermail_smtp_port_incoming);
+        let addr = (host, config.filtermail_smtp_port_incoming);
         let handler = Arc::new(
             // We want to panic here if the handler cannot be created.
-            IncomingBeforeQueueHandler::new(config.clone(), skip_dkim, postfix).unwrap(),
+            IncomingBeforeQueueHandler::new(config.clone(), skip_dkim).unwrap(),
         );
         let max_size = config.max_message_size;
         log::debug!("Incoming SMTP server listening on {}:{}", addr.0, addr.1);
@@ -133,18 +122,10 @@ async fn main() {
     }
 }
 
-fn resolve_postfix_host(s: &str) -> IpAddr {
-    match (s, 0).to_socket_addrs() {
-        Ok(mut addrs) => match addrs.next() {
-            Some(addr) => addr.ip(),
-            None => {
-                eprintln!("Cannot resolve postfix host");
-                process::exit(1);
-            }
-        },
-        Err(e) => {
-            eprintln!("Cannot resolve postfix host: {e}");
-            process::exit(1);
-        }
-    }
+fn resolve_addr(host: &str, port: u16) -> Result<SocketAddr, error::Error> {
+    log::info!("Resolving {host}");
+    Ok((host, port)
+        .to_socket_addrs()?
+        .next()
+        .ok_or(std::io::Error::other("Cannot resolve host"))?)
 }

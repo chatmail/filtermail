@@ -9,7 +9,7 @@ use crate::smtp_server::SmtpHandler;
 use crate::utils::{AddressDomain, extract_address, log_eml};
 use async_trait::async_trait;
 use mailparse::{MailHeaderMap, parse_mail};
-use std::net::{IpAddr, SocketAddr};
+use std::net::SocketAddr;
 use std::str::FromStr;
 
 /// Handler for incoming SMTP messages.
@@ -21,12 +21,11 @@ pub struct IncomingBeforeQueueHandler {
 }
 
 impl IncomingBeforeQueueHandler {
-    pub fn new(
-        config: Config,
-        skip_dkim: bool,
-        postfix_host: IpAddr,
-    ) -> Result<Self, crate::error::Error> {
-        let reinject_addr = SocketAddr::new(postfix_host, config.postfix_reinject_port_incoming);
+    pub fn new(config: Config, skip_dkim: bool) -> Result<Self, crate::error::Error> {
+        let reinject_addr = crate::resolve_addr(
+            &config.postfix_reinject_host,
+            config.postfix_reinject_port_incoming,
+        )?;
         Ok(Self {
             config,
             dkim_verifier: DkimVerifier::new()?,

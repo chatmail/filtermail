@@ -9,7 +9,7 @@ use crate::utils::extract_address;
 use async_trait::async_trait;
 use governor::{DefaultKeyedRateLimiter, Quota, RateLimiter};
 use mailparse::{MailHeaderMap, parse_mail};
-use std::net::{IpAddr, SocketAddr};
+use std::net::SocketAddr;
 
 /// Handler for outgoing SMTP messages.
 pub struct OutgoingBeforeQueueHandler {
@@ -19,15 +19,16 @@ pub struct OutgoingBeforeQueueHandler {
 }
 
 impl OutgoingBeforeQueueHandler {
-    pub fn new(config: Config, postfix_host: IpAddr) -> Self {
-        let reinject_addr = SocketAddr::new(postfix_host, config.postfix_reinject_port);
+    pub fn new(config: Config) -> Result<Self, crate::error::Error> {
+        let reinject_addr =
+            crate::resolve_addr(&config.postfix_reinject_host, config.postfix_reinject_port)?;
         let quota = Quota::per_minute(config.max_user_send_per_minute)
             .allow_burst(config.max_user_send_burst_size);
-        Self {
+        Ok(Self {
             config,
             reinject_addr,
             send_rate_limiter: RateLimiter::keyed(quota),
-        }
+        })
     }
 }
 
