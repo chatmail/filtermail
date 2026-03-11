@@ -8,14 +8,14 @@ use std::path::{Path, PathBuf};
 /// Chatmail configuration subset used by filtermail.
 #[derive(Debug, Clone, Deserialize)]
 pub struct Config {
-    #[serde(default = "Config::default_filtermail_smtp_host")]
-    pub filtermail_smtp_host: IpAddr,
+    #[serde(default = "Config::default_filtermail_host")]
+    pub filtermail_host: IpAddr,
     #[serde(default = "Config::default_filtermail_smtp_port")]
     pub filtermail_smtp_port: u16,
     #[serde(default = "Config::default_filtermail_smtp_port_incoming")]
     pub filtermail_smtp_port_incoming: u16,
-    #[serde(default = "Config::default_postfix_reinject_host")]
-    pub postfix_reinject_host: String,
+    #[serde(default = "Config::default_postfix_host")]
+    pub postfix_host: String,
     #[serde(default = "Config::default_postfix_reinject_port")]
     pub postfix_reinject_port: u16,
     #[serde(default = "Config::default_postfix_reinject_port_incoming")]
@@ -87,7 +87,7 @@ impl Config {
 
     // Following are needed since serde does not support default literals.
 
-    const fn default_filtermail_smtp_host() -> IpAddr {
+    const fn default_filtermail_host() -> IpAddr {
         IpAddr::V4(std::net::Ipv4Addr::LOCALHOST)
     }
     const fn default_filtermail_smtp_port() -> u16 {
@@ -96,7 +96,7 @@ impl Config {
     const fn default_filtermail_smtp_port_incoming() -> u16 {
         10081
     }
-    fn default_postfix_reinject_host() -> String {
+    fn default_postfix_host() -> String {
         "127.0.0.1".to_owned()
     }
     const fn default_postfix_reinject_port() -> u16 {

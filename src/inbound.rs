@@ -22,10 +22,8 @@ pub struct IncomingBeforeQueueHandler {
 
 impl IncomingBeforeQueueHandler {
     pub fn new(config: Config, skip_dkim: bool) -> Result<Self, crate::error::Error> {
-        let reinject_addr = crate::resolve_addr(
-            &config.postfix_reinject_host,
-            config.postfix_reinject_port_incoming,
-        )?;
+        let reinject_addr =
+            crate::resolve_addr(&config.postfix_host, config.postfix_reinject_port_incoming)?;
         Ok(Self {
             config,
             dkim_verifier: DkimVerifier::new()?,

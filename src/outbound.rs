@@ -21,7 +21,7 @@ pub struct OutgoingBeforeQueueHandler {
 impl OutgoingBeforeQueueHandler {
     pub fn new(config: Config) -> Result<Self, crate::error::Error> {
         let reinject_addr =
-            crate::resolve_addr(&config.postfix_reinject_host, config.postfix_reinject_port)?;
+            crate::resolve_addr(&config.postfix_host, config.postfix_reinject_port)?;
         let quota = Quota::per_minute(config.max_user_send_per_minute)
             .allow_burst(config.max_user_send_burst_size);
         Ok(Self {

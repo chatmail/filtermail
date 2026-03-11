@@ -41,7 +41,7 @@ use inbound::IncomingBeforeQueueHandler;
 use outbound::OutgoingBeforeQueueHandler;
 use smtp_server::run_smtp_server;
 use std::env;
-use std::net::{IpAddr, SocketAddr, ToSocketAddrs};
+use std::net::{SocketAddr, ToSocketAddrs};
 use std::process;
 use std::sync::Arc;
 
@@ -107,9 +107,8 @@ async fn main() {
         }
     };
 
-    let host = config.filtermail_smtp_host;
     if mode == Mode::Outgoing {
-        let addr = (host, config.filtermail_smtp_port);
+        let addr = (config.filtermail_host, config.filtermail_smtp_port);
         let handler = Arc::new(OutgoingBeforeQueueHandler::new(config.clone()).unwrap());
         let max_size = config.max_message_size;
         log::debug!("Outgoing SMTP server listening on {}:{}", addr.0, addr.1);
@@ -128,7 +127,7 @@ async fn main() {
             log::warn!("DKIM verification DISABLED! This should not be used in production.");
         }
 
-        let addr = (host, config.filtermail_smtp_port_incoming);
+        let addr = (config.filtermail_host, config.filtermail_smtp_port_incoming);
         let handler = Arc::new(
             // We want to panic here if the handler cannot be created.
             IncomingBeforeQueueHandler::new(config.clone(), skip_dkim).unwrap(),
