@@ -123,8 +123,10 @@ impl Default for Config {
     /// Used for tests.
     fn default() -> Self {
         Self {
+            filtermail_host: Self::default_filtermail_host(),
             filtermail_smtp_port: Self::default_filtermail_smtp_port(),
             filtermail_smtp_port_incoming: Self::default_filtermail_smtp_port_incoming(),
+            postfix_host: Self::default_postfix_host(),
             postfix_reinject_port: Self::default_postfix_reinject_port(),
             postfix_reinject_port_incoming: Self::default_postfix_reinject_port_incoming(),
             max_message_size: Self::default_max_message_size(),
