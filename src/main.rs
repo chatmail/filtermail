@@ -143,7 +143,7 @@ async fn main() {
 }
 
 fn resolve_addr(host: &str, port: u16) -> Result<SocketAddr, error::Error> {
-    log::info!("Resolving {host}");
+    log::debug!("Resolving {host}");
     Ok((host, port)
         .to_socket_addrs()?
         .next()
