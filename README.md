@@ -87,7 +87,7 @@ defaults to `/home/vmail/mail/<mail_domain>`.
 
 The following options are Filtermail-specific,
 they are not read by other chatmail relay components
-and usually does not need to be set at all:
+and usually do not need to be set at all:
 
 - `filtermail_host` - IP address to listen on,
 defaults to `127.0.0.1`.
