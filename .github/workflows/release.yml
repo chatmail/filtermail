@@ -15,7 +15,7 @@ jobs:
           toolchain: stable
           targets: aarch64-unknown-linux-musl,x86_64-unknown-linux-musl
       - uses: mlugg/setup-zig@d1434d08867e3ee9daa34448df10607b98908d29 # v2
-      - uses: taiki-e/install-action@4a136ceac97fe29b942ff3b6c749a46c7950d853 # v2
+      - uses: taiki-e/install-action@5ab5d1729c22acd8f798b267eadcfe5e5be6f5c2 # v2
         with:
           tool: cargo-zigbuild
       - name: Build
