@@ -51,6 +51,20 @@ where
     H: SmtpHandler + 'static,
 {
     let listener = TcpListener::bind(addr).await?;
+    tokio::select! {
+        r = run_loop(listener, handler, max_size) => r,
+        _ = tokio::signal::ctrl_c() => Ok(()),
+    }
+}
+
+async fn run_loop<H>(
+    listener: TcpListener,
+    handler: Arc<H>,
+    max_size: usize,
+) -> Result<(), Box<dyn std::error::Error>>
+where
+    H: SmtpHandler + 'static,
+{
     // message for backward compatibility with chatmaild tests.
     log::info!("entering serving loop");
 
