@@ -139,7 +139,7 @@ async fn to_socket_addrs(
     if let Ok(ip) = address.parse() {
         Ok(vec![std::net::SocketAddr::new(ip, port)])
     } else {
-        let lookup = dns_resolver.lookup_ip(address).await?;
+        let lookup = dns_resolver.lookup_ip(format!("{address}.")).await?;
         Ok(lookup
             .iter()
             .map(|ip| std::net::SocketAddr::new(ip, port))
