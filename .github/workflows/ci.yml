@@ -59,8 +59,8 @@ jobs:
         env:
           RUSTUP_TOOLCHAIN: ${{ matrix.toolchain }}
 
-  test:
-    name: Test on ${{ matrix.os }}
+  rust-test:
+    name: Run rust tests on ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: false
@@ -75,3 +75,72 @@ jobs:
           toolchain: stable
       - uses: Swatinem/rust-cache@c19371144df3bb44fab255c43d04cbc2ab54d1c4 # v2
       - run: cargo test
+
+  build:
+    name: Build and temporarily host a filtermail binary
+    runs-on: ubuntu-24.04
+    outputs:
+      filtermail-url: ${{ steps.binary-upload.outputs.artifact-url }}
+      filtermail-sha256: ${{ steps.binary-upload.outputs.artifact-digest }}
+    steps:
+    - name: Checkout filtermail
+      uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      with:
+        path: filtermail
+        persist-credentials: false
+    - name: Setup Rust
+      uses: dtolnay/rust-toolchain@3c5f7ea28cd621ae0bf5283f0e981fb97b8a7af9 # master
+      with:
+       toolchain: stable
+       targets: x86_64-unknown-linux-musl
+    - name: Setup Zig
+      uses: mlugg/setup-zig@d1434d08867e3ee9daa34448df10607b98908d29 # v2
+    - name: Install Zigbuild
+      uses: taiki-e/install-action@58e862542551f667fa44c8a2a4a1d64ad477c96a # v2
+      with:
+        tool: cargo-zigbuild
+    - name: Build filtermail
+      run: |
+        cd filtermail && \
+        RUSTFLAGS="-Ctarget-feature=+crt-static -Clink-self-contained=yes" \
+        cargo zigbuild \
+          --release \
+          --target x86_64-unknown-linux-musl
+    - name: Upload filtermail binary
+      id: binary-upload
+      uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      with:
+        name: filtermail
+        archive: 'false'
+        path: filtermail/target/x86_64-unknown-linux-musl/release/filtermail
+        if-no-files-found: error
+        retention-days: 5
+
+  relay-test:
+    name: Test the patched relay with cmlxc
+    needs: build
+    uses: chatmail/cmlxc/.github/workflows/lxc-test.yml@j-g00da/xargs-separate-with-null
+    with:
+      cmlxc_commands: |
+        # todo: lxc-test.yml has no way to overwrite relay repository, so it will clone filtermail
+        rm -rf repo
+        git clone --depth 1 --branch main https://github.com/chatmail/relay repo
+        
+        # patch relay to use filtermail binary built from current branch
+        sed -i 's%\(\s*url\s=\sf"\).*\("$\)%\1'"${{ needs.build.outputs.filtermail-url }}"'\2%; s%\(\s*"x86_64":\s"\).*\(",$\)%\1'"${{ needs.build.outputs.filtermail-sha256 }}"'\2%' repo/cmdeploy/src/cmdeploy/filtermail/deployer.py
+        
+        cmlxc init
+        # single cmdeploy relay test
+        cmlxc -v deploy-cmdeploy --source ./repo cm0
+        cmlxc -v test-mini cm0
+        cmlxc -v test-cmdeploy cm0
+
+        # cross cmdeploy relay test
+        cmlxc -v deploy-cmdeploy --source ./repo --ipv4-only cm1
+        cmlxc -v test-cmdeploy cm0 cm1
+
+        # cross cmdeploy/madmail relay tests
+        cmlxc -v deploy-madmail mad0
+        cmlxc -v test-cmdeploy cm0 mad0
+        cmlxc -v test-mini cm0 mad0
+        cmlxc -v test-mini mad0 cm0
