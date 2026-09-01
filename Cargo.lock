@@ -2071,11 +2071,11 @@ dependencies = [
 
 [[package]]
 name = "serini"
-version = "0.2.2"
+version = "0.3.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "c3948771e3c915493235146627cddf2d65de15396033da39d918637a02fda6fb"
+checksum = "6be70e79eb36ee0c2f65e7dc96aa40b363613f90d8138c485c0d1ad5e938a4e8"
 dependencies = [
- "serde",
+ "serde_core",
  "thiserror",
 ]
 
