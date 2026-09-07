@@ -238,7 +238,7 @@ impl Worker {
                 tls_resumption_store.clone(),
                 smtp_connection_pool.clone(),
                 mxdeliv_unsupported_hosts.clone(),
-                https_client.clone(),
+                &https_client,
                 dns_resolver.clone(),
                 destination.clone(),
                 message.envelope,
@@ -264,7 +264,7 @@ impl Worker {
         tls_resumption_store: Arc<rustls::client::ClientSessionMemoryCache>,
         smtp_connection_pool: Arc<SmtpConnectionPool<S>>,
         mxdeliv_unsupported_hosts: Arc<retainer::Cache<String, ()>>,
-        https_client: HttpsClient,
+        https_client: &HttpsClient,
         dns_resolver: Arc<TokioResolver>,
         domain: AddressDomain,
         envelope: Envelope,
@@ -363,7 +363,7 @@ impl Worker {
                 log::debug!("Skipping HTTP delivery to host that failed recently: {mx_host}");
             } else {
                 match Self::https_delivery(
-                    https_client.clone(),
+                    https_client,
                     mx_host.clone(),
                     &envelope,
                     allow_invalid_cert,
@@ -449,7 +449,7 @@ impl Worker {
     ///
     /// Times out after 60s.
     async fn https_delivery(
-        https_client: HttpsClient,
+        https_client: &HttpsClient,
         mx_host: String,
         envelope: &Envelope,
         allow_invalid_cert: bool,
@@ -471,9 +471,9 @@ impl Worker {
         };
 
         let client = if allow_invalid_cert {
-            https_client.relaxed
+            &https_client.relaxed
         } else {
-            https_client.secure
+            &https_client.secure
         };
 
         let response = tokio::time::timeout(Duration::from_secs(60), client.request(request))
