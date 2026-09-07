@@ -122,10 +122,8 @@ async fn main() -> Result<(), error::Error> {
     match mode {
         Mode::Outgoing => {
             let addr = (config.filtermail_host, config.filtermail_smtp_port);
-            let handler = Arc::new(OutgoingBeforeQueueHandler::<TcpStream>::new(
-                config.clone(),
-            )?);
             let max_size = config.max_message_size;
+            let handler = Arc::new(OutgoingBeforeQueueHandler::<TcpStream>::new(config)?);
             log::debug!("Outgoing SMTP server listening on {}:{}", addr.0, addr.1);
 
             if let Err(e) = run_smtp_server(&addr, handler, max_size).await {
@@ -143,15 +141,16 @@ async fn main() -> Result<(), error::Error> {
                 log::warn!("DKIM verification DISABLED! This should not be used in production.");
             }
 
-            let handler = Arc::new(IncomingBeforeQueueHandler::<TcpStream>::new(
-                config.clone(),
-                skip_dkim,
-            )?);
             let max_size = config.max_message_size;
+            let addr_http = (config.filtermail_host, config.filtermail_http_port_incoming);
+            let addr_smtp = (config.filtermail_host, config.filtermail_smtp_port_incoming);
+
+            let handler = Arc::new(IncomingBeforeQueueHandler::<TcpStream>::new(
+                config, skip_dkim,
+            )?);
 
             let mut server_set = tokio::task::JoinSet::new();
 
-            let addr_smtp = (config.filtermail_host, config.filtermail_smtp_port_incoming);
             let handler_smtp = handler.clone();
             server_set
                 .spawn(async move { run_smtp_server(&addr_smtp, handler_smtp, max_size).await });
@@ -161,7 +160,6 @@ async fn main() -> Result<(), error::Error> {
                 addr_smtp.1
             );
 
-            let addr_http = (config.filtermail_host, config.filtermail_http_port_incoming);
             let handler_http = handler.clone();
 
             server_set
@@ -184,8 +182,8 @@ async fn main() -> Result<(), error::Error> {
                 config.filtermail_host,
                 config.filtermail_lmtp_port_transport,
             );
-            let handler = Arc::new(TransportHandler::<TcpStream>::new(config.clone())?);
             let max_size = config.max_message_size;
+            let handler = Arc::new(TransportHandler::<TcpStream>::new(config)?);
             log::debug!("Transport SMTP server listening on {}:{}", addr.0, addr.1);
 
             if let Err(e) = run_smtp_server(&addr, handler, max_size).await {
