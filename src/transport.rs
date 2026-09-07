@@ -2,8 +2,9 @@ mod https_client;
 mod worker;
 
 use crate::config::Config;
+use crate::dkim_signer::DkimSigner;
 use crate::smtp_responses::{LOCAL_ERROR_451, TRANSPORT_BUSY_421};
-use crate::smtp_server::{SmtpHandler, Transaction};
+use crate::smtp_server::{Envelope, SmtpHandler, Transaction};
 use crate::tcp::{TcpConnect, TcpStreamTrait};
 use crate::utils::AddressDomain;
 use async_trait::async_trait;
@@ -17,6 +18,7 @@ pub const HEADER_MAIL_FROM: &str = "X-MAIL-FROM";
 pub const HEADER_RCPT_TO: &str = "X-MAIL-TO";
 
 pub struct TransportHandler<S: TcpConnect> {
+    dkim_signer: DkimSigner,
     workers: WorkerPool<S>,
 }
 
@@ -26,10 +28,14 @@ where
     S::ConnectionContext: Default,
 {
     /// Creates a new [`TransportHandler`].
-    pub fn new(config: Config) -> Result<Self, crate::error::Error> {
+    pub async fn new(config: Config) -> Result<Self, crate::error::Error> {
+        let dkim_signer = DkimSigner::new(&config.mail_domain).await?;
         let workers = WorkerPool::new(config)?;
 
-        Ok(Self { workers })
+        Ok(Self {
+            dkim_signer,
+            workers,
+        })
     }
 
     /// Same as [`Self::new`], but lets you set worker queue size and pool capacity.
@@ -124,15 +130,17 @@ where
                 .push(rcpt.to_string());
         }
 
+        let signed_data = self.dkim_signer.sign(&transaction.envelope.data).await?;
+
         // one transaction per domain
         let mut transactions = JoinSet::new();
         let mut task_id_domain_map = BTreeMap::new();
 
         for (rcpt_domain, rcpts) in &domain_rcpts_map {
-            let domain_envelope = {
-                let mut envelope = transaction.envelope.clone();
-                envelope.rcpt_to = rcpts.clone();
-                envelope
+            let domain_envelope = Envelope {
+                mail_from: transaction.envelope.mail_from.clone(),
+                rcpt_to: rcpts.clone(),
+                data: signed_data.clone(),
             };
             let receiver_task_id =
                 if let Some(permit) = transaction.state.permits.remove(rcpt_domain) {
