@@ -2,7 +2,6 @@
 
 use crate::config::Config;
 use crate::message::{check_encrypted, is_securejoin};
-use crate::smtp_client::SmtpConnectionPool;
 use crate::smtp_responses::ENCRYPTION_NEEDED_523;
 use crate::smtp_responses::OK_250;
 use crate::smtp_server::{SmtpHandler, Transaction};
@@ -34,7 +33,7 @@ pub struct OutgoingBeforeQueueHandler<S: TcpConnect> {
         MonotonicClock,
         NoOpMiddleware<std::time::Instant>,
     >,
-    smtp_connection_pool: Arc<SmtpConnectionPool<S>>,
+    connection_context: S::ConnectionContext,
 }
 
 impl<S> OutgoingBeforeQueueHandler<S>
@@ -51,7 +50,7 @@ where
             config,
             dns_resolver,
             send_rate_limiter,
-            smtp_connection_pool: SmtpConnectionPool::new(Default::default()),
+            connection_context: Default::default(),
         })
     }
 }
@@ -173,14 +172,15 @@ where
             client_hostname: &hostname,
             tls_config: None,
             lmtp: false,
+            connection_context: self.connection_context.clone(),
         };
-        crate::smtp_client::send(
+        crate::smtp_client::send::<S>(
             &self.config.postfix_host,
             self.config.postfix_reinject_port,
             &transaction.envelope,
             client_config,
             self.dns_resolver.clone(),
-            self.smtp_connection_pool.clone(),
+            &mut None,
         )
         .await
         .map_err(|e| {

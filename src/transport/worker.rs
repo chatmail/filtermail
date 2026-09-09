@@ -1,5 +1,5 @@
 use crate::config::Config;
-use crate::smtp_client::{SmtpConnectionPool, TlsConfig};
+use crate::smtp_client::{SmtpConnection, TlsConfig};
 use crate::smtp_responses::{OK_HTTPS_250, OK_SMTP_250};
 use crate::smtp_server::Envelope;
 use crate::tcp::{TcpConnect, TcpStreamTrait};
@@ -49,7 +49,7 @@ type SMTPResponse = Result<String, String>;
 pub struct WorkerPool<S: TcpConnect> {
     inner: Arc<RwLock<BTreeMap<AddressDomain, Arc<Worker>>>>,
     client_hostname: String,
-    smtp_connection_pool: Arc<SmtpConnectionPool<S>>,
+    connection_context: S::ConnectionContext,
     mxdeliv_unsupported_hosts: Arc<retainer::Cache<String, ()>>,
     monitor_handle: JoinHandle<()>,
     dns_resolver: Arc<TokioResolver>,
@@ -78,7 +78,7 @@ where
             inner: Default::default(),
             client_hostname: config.mail_domain,
             dns_resolver,
-            smtp_connection_pool: SmtpConnectionPool::<S>::new(Default::default()),
+            connection_context: Default::default(),
             mxdeliv_unsupported_hosts: mxdeliv_cache,
             monitor_handle,
             queue_size: PER_DESTINATION_QUEUE_SIZE,
@@ -138,11 +138,11 @@ where
                 }
 
                 let (tx, rx) = mpsc::channel(self.queue_size);
-                let handle = tokio::spawn(Worker::run(
+                let handle = tokio::spawn(Worker::run::<S>(
                     destination.clone(),
                     rx,
                     self.client_hostname.clone(),
-                    self.smtp_connection_pool.clone(),
+                    self.connection_context.clone(),
                     self.mxdeliv_unsupported_hosts.clone(),
                     self.dns_resolver.clone(),
                     self.inner.clone(),
@@ -212,7 +212,7 @@ impl Worker {
         destination: AddressDomain,
         mut rx: mpsc::Receiver<WorkerMessage>,
         client_hostname: String,
-        smtp_connection_pool: Arc<SmtpConnectionPool<S>>,
+        context: S::ConnectionContext,
         mxdeliv_unsupported_hosts: Arc<retainer::Cache<String, ()>>,
         dns_resolver: Arc<TokioResolver>,
         worker_pool: Arc<RwLock<BTreeMap<AddressDomain, Arc<Worker>>>>,
@@ -226,8 +226,9 @@ impl Worker {
 
         log::info!("Starting worker {worker_id} for destination {destination}");
 
-        let tls_resumption_store = Arc::new(rustls::client::ClientSessionMemoryCache::new(256));
+        let tls_resumption_store = Arc::new(rustls::client::ClientSessionMemoryCache::new(2));
         let https_client = HttpsClient::new(tls_resumption_store.clone())?;
+        let mut smtp_connection: Option<SmtpConnection<S>> = None;
 
         while let Ok(Some(message)) = timeout(WORKER_KEEPALIVE_DURATION, rx.recv()).await {
             log::trace!(
@@ -236,7 +237,8 @@ impl Worker {
             );
             let result = Self::handle_single_domain(
                 tls_resumption_store.clone(),
-                smtp_connection_pool.clone(),
+                &mut smtp_connection,
+                context.clone(),
                 mxdeliv_unsupported_hosts.clone(),
                 &https_client,
                 dns_resolver.clone(),
@@ -262,7 +264,8 @@ impl Worker {
     #[expect(clippy::too_many_arguments)]
     async fn handle_single_domain<S>(
         tls_resumption_store: Arc<rustls::client::ClientSessionMemoryCache>,
-        smtp_connection_pool: Arc<SmtpConnectionPool<S>>,
+        smtp_connection: &mut Option<SmtpConnection<S>>,
+        context: S::ConnectionContext,
         mxdeliv_unsupported_hosts: Arc<retainer::Cache<String, ()>>,
         https_client: &HttpsClient,
         dns_resolver: Arc<TokioResolver>,
@@ -384,6 +387,7 @@ impl Worker {
                 client_hostname: &client_hostname,
                 tls_config: tls_config.clone(),
                 lmtp: false,
+                connection_context: context.clone(),
             };
             match crate::smtp_client::send(
                 &mx_host,
@@ -391,7 +395,7 @@ impl Worker {
                 &envelope,
                 client_config,
                 dns_resolver.clone(),
-                smtp_connection_pool.clone(),
+                smtp_connection,
             )
             .await
             {

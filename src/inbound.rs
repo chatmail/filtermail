@@ -3,7 +3,6 @@
 use crate::config::Config;
 use crate::dkim_verifier::DkimVerifier;
 use crate::message::{check_encrypted, is_securejoin};
-use crate::smtp_client::SmtpConnectionPool;
 use crate::smtp_responses::ENCRYPTION_NEEDED_523;
 pub use crate::smtp_server::Envelope;
 use crate::smtp_server::{SmtpHandler, Transaction};
@@ -21,7 +20,7 @@ pub struct IncomingBeforeQueueHandler<S: TcpConnect> {
     dns_resolver: Arc<TokioResolver>,
     dkim_verifier: DkimVerifier,
     skip_dkim: bool,
-    smtp_connection_pool: Arc<SmtpConnectionPool<S>>,
+    connection_context: S::ConnectionContext,
 }
 
 impl<S> IncomingBeforeQueueHandler<S>
@@ -36,7 +35,7 @@ where
             dns_resolver: dns_resolver.clone(),
             dkim_verifier: DkimVerifier::new(dns_resolver),
             skip_dkim,
-            smtp_connection_pool: SmtpConnectionPool::new(Default::default()),
+            connection_context: Default::default(),
         })
     }
 
@@ -165,14 +164,15 @@ where
             client_hostname: &hostname,
             tls_config: None,
             lmtp: false,
+            connection_context: self.connection_context.clone(),
         };
-        crate::smtp_client::send(
+        crate::smtp_client::send::<S>(
             &self.config.postfix_host,
             self.config.postfix_reinject_port_incoming,
             &transaction.envelope,
             client_config,
             self.dns_resolver.clone(),
-            self.smtp_connection_pool.clone(),
+            &mut None,
         )
         .await
         .map_err(|e| {
