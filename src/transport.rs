@@ -203,7 +203,6 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::smtp_client::SmtpConnectionPool;
     use crate::smtp_server::{Envelope, MockHandler, run_smtp_server};
     use crate::tcp::rec_stream::RecTcpStream;
     use rstest::{fixture, rstest};
@@ -275,10 +274,11 @@ mod tests {
     /// Does not fail on negative response.
     async fn lmtp_send(envelope: &Envelope) -> TestResult<String> {
         let (tx, mut rx) = tokio::sync::mpsc::channel(128);
-        let client_config = crate::smtp_client::ClientConfig {
+        let client_config = crate::smtp_client::ClientConfig::<'_, RecTcpStream> {
             client_hostname: "postfix",
             tls_config: None,
             lmtp: true,
+            connection_context: tx,
         };
         let _ = crate::smtp_client::send(
             FILTERMAIL_IP,
@@ -286,7 +286,7 @@ mod tests {
             envelope,
             client_config,
             Arc::new(crate::utils::build_resolver()?),
-            SmtpConnectionPool::<RecTcpStream>::new(tx),
+            &mut None,
         )
         .await;
 

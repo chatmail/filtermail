@@ -7,71 +7,14 @@ use std::task::{Context, Poll};
 use std::time::Duration;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufStream};
 use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
-use tokio::task::{JoinHandle, JoinSet};
+use tokio::task::JoinSet;
 use tokio_io_timeout::TimeoutStream;
 use tokio_rustls::rustls::client::ClientSessionMemoryCache;
 
 /// Wraps SMTP connection, contains stream and ESMTP support information.
-pub struct SmtpConnection<S> {
+pub struct SmtpConnection<S: TcpConnect> {
     pub stream: BufStream<SmtpStream<S>>,
     pub pipelining: bool,
-}
-
-/// A connection pool for SMTP connections, keyed by (address, port).
-///
-/// Connections are cached for up to 100 seconds of idle time.
-///
-/// Only a single connection is cached per address/port pair.
-pub struct SmtpConnectionPool<S>
-where
-    S: TcpStreamTrait + TcpConnect,
-{
-    pool: Arc<retainer::Cache<(String, u16), SmtpConnection<S>>>,
-    monitor_handle: JoinHandle<()>,
-    context: S::ConnectionContext,
-}
-
-impl<S> SmtpConnectionPool<S>
-where
-    S: TcpStreamTrait + TcpConnect,
-{
-    /// Creates a new connection pool and starts the cache monitoring task.
-    pub fn new(context: S::ConnectionContext) -> Arc<Self> {
-        let pool = Arc::new(retainer::Cache::new());
-        let pool_clone = pool.clone();
-
-        let monitor_handle =
-            tokio::spawn(async move { pool_clone.monitor(4, 0.25, Duration::from_secs(10)).await });
-
-        Arc::new(Self {
-            pool,
-            monitor_handle,
-            context,
-        })
-    }
-
-    /// Takes a connection from the pool for the given address and port, if available.
-    pub async fn take(&self, address: &str, port: u16) -> Option<SmtpConnection<S>> {
-        self.pool.remove(&(address.to_string(), port)).await
-    }
-
-    /// Puts a connection into the pool for the given address and port, with a 100s timeout.
-    pub async fn put(&self, address: &str, port: u16, connection: SmtpConnection<S>) {
-        // similarly to postfix default -> 100s max idle time.
-        self.pool
-            .insert(
-                (address.to_string(), port),
-                connection,
-                Duration::from_secs(100),
-            )
-            .await;
-    }
-}
-
-impl<S: TcpConnect> Drop for SmtpConnectionPool<S> {
-    fn drop(&mut self) {
-        self.monitor_handle.abort();
-    }
 }
 
 /// A [`TcpStream`] wrapper used for SMTP communication.
@@ -242,7 +185,7 @@ where
 }
 
 /// SMTP/LMTP client configuration options.
-pub struct ClientConfig<'a> {
+pub struct ClientConfig<'a, S: TcpConnect> {
     /// Client hostname used for greeting
     pub client_hostname: &'a str,
 
@@ -252,49 +195,61 @@ pub struct ClientConfig<'a> {
 
     /// If `true`, switches to `LHLO` greeting and returns per-recipient composite response.
     pub lmtp: bool,
+
+    /// Additional parameters for connection establishment,
+    /// e.g. a reference to the session transcript channel in the tests
+    /// (see [`RecTcpStream`]).
+    ///
+    /// [`RecTcpStream`]: crate::tcp::rec_stream::RecTcpStream
+    pub connection_context: S::ConnectionContext,
 }
 
 /// Sends an email using an SMTP server at `smtp_addr`.
 /// If `address` is a domain that resolves to multiple IP addresses,
 /// all will be tried in parallel and the first successful connection will be used.
 ///
-/// `pool` is used to reuse existing connections to the same address and port, if available.
+/// If `connection` is supplied, it will be used instead,
+/// and provided `address` and `port` will only serve as a fallback.
 pub async fn send<S>(
     address: &str,
     port: u16,
     envelope: &Envelope,
-    config: ClientConfig<'_>,
+    config: ClientConfig<'_, S>,
     dns_resolver: Arc<TokioResolver>,
-    pool: Arc<SmtpConnectionPool<S>>,
+    connection: &mut Option<SmtpConnection<S>>,
 ) -> Result<(), crate::error::Error>
 where
     S: TcpStreamTrait + TcpConnect,
 {
     let greeting = if config.lmtp { "LHLO" } else { "EHLO" };
 
-    let (mut buf_stream, reused, mut pipelining) =
-        if let Some(connection) = pool.take(address, port).await {
-            log::debug!(
-                "Reusing existing connection to {}",
-                connection.stream.get_ref().format_host(address)
+    let (mut buf_stream, reused, mut pipelining) = if let Some(con) = connection.take() {
+        log::debug!(
+            "Reusing existing connection to {}",
+            con.stream.get_ref().format_host(address)
+        );
+        if config.tls_config.is_some() {
+            // This should never happen,
+            // assert to make sure we never accidentally use a plain connection while expecting TLS.
+            assert!(
+                matches!(con.stream.get_ref(), SmtpStream::Tls(_)),
+                "Expected TLS stream from pool, but got plain stream."
             );
-            if config.tls_config.is_some() {
-                // This should never happen,
-                // assert to make sure we never accidentally use a plain connection while expecting TLS.
-                assert!(
-                    matches!(connection.stream.get_ref(), SmtpStream::Tls(_)),
-                    "Expected TLS stream from pool, but got plain stream."
-                );
-            }
-            (connection.stream, true, connection.pipelining)
-        } else {
-            let stream = SmtpStream::plain(
-                establish_tcp_connection(address, port, dns_resolver.clone(), pool.context.clone())
-                    .await?,
-            );
-            log::debug!("Successfully connected to {}", stream.format_host(address));
-            (BufStream::new(stream), false, false)
-        };
+        }
+        (con.stream, true, con.pipelining)
+    } else {
+        let stream = SmtpStream::plain(
+            establish_tcp_connection(
+                address,
+                port,
+                dns_resolver.clone(),
+                config.connection_context.clone(),
+            )
+            .await?,
+        );
+        log::debug!("Successfully connected to {}", stream.format_host(address));
+        (BufStream::new(stream), false, false)
+    };
 
     let mut response = String::new();
 
@@ -359,8 +314,13 @@ where
         // e.g.: 421 example.org Service closing transmission channel - command timeout
         if response.starts_with("421") {
             log::debug!("Reused connection is dead; establishing new connection...");
-            let stream: S =
-                establish_tcp_connection(address, port, dns_resolver, pool.context.clone()).await?;
+            let stream: S = establish_tcp_connection(
+                address,
+                port,
+                dns_resolver,
+                config.connection_context.clone(),
+            )
+            .await?;
             log::debug!("Successfully connected to {}", stream.peer_addr()?);
             buf_stream = BufStream::new(SmtpStream::plain(stream));
             false
@@ -497,15 +457,10 @@ where
         smtp_read!("end of DATA", "250")?;
     }
 
-    pool.put(
-        address,
-        port,
-        SmtpConnection {
-            stream: buf_stream,
-            pipelining,
-        },
-    )
-    .await;
+    connection.replace(SmtpConnection {
+        stream: buf_stream,
+        pipelining,
+    });
 
     Ok(())
 }
