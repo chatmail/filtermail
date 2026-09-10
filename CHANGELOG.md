@@ -1,3 +1,14 @@
+## 0.7.5 - 2026-09-10
+
+### Performance
+
+- Pass HttpsClient by reference instead of cloning it (#229)
+- Remove connection pool (#230)
+
+### Refactor
+
+- Do not evaluate smtp_write! argument twice
+- Do not clone the Config unnecessarily (#228)
 ## 0.7.4 - 2026-07-01
 
 ### Features
