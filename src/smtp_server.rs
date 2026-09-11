@@ -3,6 +3,7 @@
 use crate::smtp_responses::OK_250;
 use crate::utils::{extract_address, log_eml};
 use async_trait::async_trait;
+use bytes::Bytes;
 use memchr::{Memchr, memmem};
 use std::fmt::Debug;
 use std::sync::Arc;
@@ -22,7 +23,7 @@ pub struct Envelope {
     /// It MUST end with `<CRLF>`, contain no bare `<CR>` or `<LF>`
     /// and have all `<CRLF>.` sequences escaped with `.` according to
     /// <https://www.rfc-editor.org/rfc/rfc5321.html#section-4.5.2>.
-    pub data: Vec<u8>,
+    pub data: Bytes,
 }
 
 /// Represent an ongoing SMTP transaction.
@@ -310,7 +311,7 @@ where
                 }
             }
 
-            transaction.envelope.data = data;
+            transaction.envelope.data = Bytes::from_owner(data);
 
             // Process the message
             match handler.handle_data_dot(&mut transaction).await {

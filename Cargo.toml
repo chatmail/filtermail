@@ -50,6 +50,7 @@ hyper-rustls = { version = "0.27.9", default-features = false, features = [
   "logging",
   "tls12",
 ] }
+bytes = "1.12.1"
 
 [dev-dependencies]
 rstest = "0.26.1"

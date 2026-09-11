@@ -142,7 +142,7 @@ impl<H: SmtpHandler + 'static> Service<Request<Incoming>> for MxDelivService<H> 
                 }
             };
 
-            transaction.envelope.data = body_bytes.to_vec();
+            transaction.envelope.data = body_bytes;
 
             log::debug!("(HTTP) MAIL FROM:<{}>", transaction.envelope.mail_from);
             for rcpt in &transaction.envelope.rcpt_to {
