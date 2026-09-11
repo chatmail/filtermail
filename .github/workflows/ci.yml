@@ -59,7 +59,7 @@ jobs:
           toolchain: ${{ matrix.toolchain }}
           components: clippy
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
-      - run: cargo clippy
+      - run: cargo clippy --locked
         env:
           RUSTUP_TOOLCHAIN: ${{ matrix.toolchain }}
 
@@ -74,7 +74,7 @@ jobs:
         with:
           toolchain: stable
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2
-      - run: cargo test
+      - run: cargo test --locked
 
   relay-test:
     name: Test the relay with cmlxc and custom filtermail
@@ -84,7 +84,7 @@ jobs:
         sudo apt-get update && sudo apt-get install -y musl-tools
         rustup target add x86_64-unknown-linux-musl
         export CARGO_TARGET_X86_64_UNKNOWN_LINUX_MUSL_LINKER=musl-gcc
-        cd repo && RUSTFLAGS="-Ctarget-feature=+crt-static -Clink-self-contained=yes" cargo build --release --target x86_64-unknown-linux-musl
+        cd repo && RUSTFLAGS="-Ctarget-feature=+crt-static -Clink-self-contained=yes" cargo build --locked --release --target x86_64-unknown-linux-musl
         cmlxc init
         cmlxc -v deploy-cmdeploy --filtermail repo/target/x86_64-unknown-linux-musl/release/filtermail cm0
         cmlxc -v deploy-cmdeploy --filtermail repo/target/x86_64-unknown-linux-musl/release/filtermail --type ipv4 cm1
