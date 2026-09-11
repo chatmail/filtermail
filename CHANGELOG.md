@@ -1,3 +1,12 @@
+## 0.7.6 - 2026-09-11
+
+### Miscellaneous Tasks
+
+- Always use --locked flag in CI (#233)
+
+### Performance
+
+- Don't keep multiple copies of the same mail data in memory (#232)
 ## 0.7.5 - 2026-09-10
 
 ### Performance
