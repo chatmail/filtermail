@@ -471,7 +471,7 @@ impl Worker {
                 builder = builder.header(HEADER_RCPT_TO, rcpt_to);
             }
 
-            builder.body(http_body_util::Full::from(envelope.data.clone()))?
+            builder.body(http_body_util::Full::from(envelope.data.to_vec()))?
         };
 
         let client = if allow_invalid_cert {

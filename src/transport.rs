@@ -387,7 +387,7 @@ mod tests {
                 "b1@[127.0.0.1]".to_string(),
                 "b2@[127.0.0.1]".to_string(),
             ],
-            data: "message\r\n".as_bytes().to_vec(),
+            data: "message\r\n".into(),
         };
 
         let record = lmtp_send(&envelope).await?;
@@ -420,7 +420,7 @@ mod tests {
         let mut envelope = Envelope {
             mail_from: "sender@here".to_string(),
             rcpt_to: vec!["a1@localhost".to_string(), "b1@[127.0.0.1]".to_string()],
-            data: "message\r\n".as_bytes().to_vec(),
+            data: "message\r\n".into(),
         };
 
         let (record_postfix_1, record_filtermail_1) = {
@@ -466,13 +466,13 @@ mod tests {
         let envelope_1 = Envelope {
             mail_from: "sender@here".to_string(),
             rcpt_to: vec!["a1@localhost".to_string()],
-            data: "message\r\n".as_bytes().to_vec(),
+            data: "message\r\n".into(),
         };
 
         let envelope_2 = Envelope {
             mail_from: "sender@here".to_string(),
             rcpt_to: vec!["b1@[127.0.0.1]".to_string()],
-            data: "message\r\n".as_bytes().to_vec(),
+            data: "message\r\n".into(),
         };
 
         // 1

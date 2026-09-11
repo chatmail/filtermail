@@ -187,6 +187,7 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
+    use bytes::Bytes;
     use rstest::{fixture, rstest};
     use testresult::TestResult;
     use tokio::net::TcpStream;
@@ -212,7 +213,7 @@ mod tests {
         let mut transaction = Transaction {
             envelope: Envelope {
                 mail_from: address.to_string(),
-                data: eml.to_vec(),
+                data: Bytes::from_owner(eml.to_vec()),
                 rcpt_to: vec!["does.not.matter@example.org".to_string()],
             },
             ..Default::default()
