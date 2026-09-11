@@ -1,3 +1,8 @@
+## 0.7.7 - 2026-09-11
+
+### Performance
+
+- Don't convert Bytes to Vec (#235)
 ## 0.7.6 - 2026-09-11
 
 ### Miscellaneous Tasks
