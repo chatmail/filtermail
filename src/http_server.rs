@@ -10,6 +10,7 @@ use std::pin::Pin;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::net::{TcpListener, TcpStream};
+use tokio_io_timeout::TimeoutStream;
 
 /// Runs the HTTP server on the specified address with the given handler and maximum message size.
 pub async fn run_http_server<H>(
@@ -54,9 +55,12 @@ where
     H: SmtpHandler + 'static,
 {
     let service = MxDelivService::new(handler, max_size);
+    let mut timeout_stream = TimeoutStream::new(socket);
+    timeout_stream.set_write_timeout(Some(Duration::from_secs(60)));
+    timeout_stream.set_read_timeout(Some(Duration::from_secs(60)));
 
     hyper_util::server::conn::auto::Builder::new(hyper_util::rt::TokioExecutor::new())
-        .serve_connection(TokioIo::new(socket), service)
+        .serve_connection(TokioIo::new(Box::pin(timeout_stream)), service)
         .await
         .map_err(|e| e.to_string())?;
 
