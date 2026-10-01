@@ -34,7 +34,7 @@ tokio-rustls = { version = "0.26.4", default-features = false, features = [
 ] }
 webpki-roots = "1.0.7"
 tokio-io-timeout = "1.2.1"
-retainer = "0.4.0"
+retainer = "0.5.0"
 hyper = { version = "1.8.1", features = ["server"] }
 hyper-util = { version = "0.1.20", features = [
   "tokio",
