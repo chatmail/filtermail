@@ -10,6 +10,7 @@ use std::sync::Arc;
 use std::time::Duration;
 use tokio::io::{AsyncBufReadExt, AsyncRead, AsyncWrite, AsyncWriteExt, BufStream};
 use tokio::net::TcpListener;
+use tokio_io_timeout::TimeoutStream;
 
 /// Represents an SMTP envelope with sender, recipients, and raw message data.
 #[derive(Debug, Default, Clone)]
@@ -168,13 +169,19 @@ where
 
     loop {
         match listener.accept().await {
-            Ok((socket, _peer_addr)) => {
+            Ok((stream, _peer_addr)) => {
                 // Disable Nagle's algorithm.
-                socket.set_nodelay(true)?;
+                stream.set_nodelay(true)?;
+
+                let mut timeout_stream = TimeoutStream::new(stream);
+                timeout_stream.set_write_timeout(Some(Duration::from_secs(60)));
+                timeout_stream.set_read_timeout(Some(Duration::from_secs(60)));
 
                 let handler = handler.clone();
                 tokio::spawn(async move {
-                    if let Err(e) = handle_connection(socket, handler, max_size, false).await {
+                    if let Err(e) =
+                        handle_connection(Box::pin(timeout_stream), handler, max_size, false).await
+                    {
                         log::error!("Error handling connection: {e}");
                     }
                 });
