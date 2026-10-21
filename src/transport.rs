@@ -9,8 +9,10 @@ use crate::utils::AddressDomain;
 use async_trait::async_trait;
 use std::collections::BTreeMap;
 use std::str::FromStr;
+use std::time::Duration;
 use tokio::sync::mpsc::OwnedPermit;
 use tokio::task::JoinSet;
+use tokio::time::timeout;
 use worker::{WorkerMessage, WorkerPool};
 
 pub const HEADER_MAIL_FROM: &str = "X-MAIL-FROM";
@@ -138,7 +140,15 @@ where
                 if let Some(permit) = transaction.state.permits.remove(rcpt_domain) {
                     let (message, receiver) = WorkerMessage::new(domain_envelope);
                     permit.send(message);
-                    transactions.spawn(receiver).id()
+                    transactions
+                        .spawn(async move {
+                            // This value must be lower than postfix lmtp timeout,
+                            // which is by default 10 minutes.
+                            timeout(Duration::from_mins(9), receiver)
+                                .await
+                                .unwrap_or_else(|_| Ok(Err("451 Timeout".to_string())))
+                        })
+                        .id()
                 } else {
                     transactions
                         .spawn(async move { Ok(Err(TRANSPORT_BUSY_421.to_string())) })
