@@ -198,16 +198,18 @@ pub fn check_armored_payload(payload: &str, outgoing: bool) -> bool {
         payload = left;
     }
 
-    let payload = payload.replace(['\r', '\n'], "");
-    let payload = match BASE64_STANDARD.decode(payload.as_bytes()) {
-        Ok(v) => v,
-        Err(_) => {
+    let mut decode_buffer = Vec::with_capacity(base64::decoded_len_estimate(payload.len()));
+    for line in payload.split(['\r', '\n']) {
+        if BASE64_STANDARD
+            .decode_vec(line, &mut decode_buffer)
+            .is_err()
+        {
             log::debug!("check_armored_payload: Base64 decoding failed");
             return false;
         }
-    };
+    }
 
-    check_openpgp_payload(&payload).unwrap_or(false)
+    check_openpgp_payload(&decode_buffer).unwrap_or(false)
 }
 
 #[cfg(test)]
