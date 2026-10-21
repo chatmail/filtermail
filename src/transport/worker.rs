@@ -230,7 +230,7 @@ impl Worker {
         let https_client = HttpsClient::new(tls_resumption_store.clone())?;
         let mut smtp_connection: Option<SmtpConnection<S>> = None;
 
-        while let Ok(Some(message)) = timeout(WORKER_KEEPALIVE_DURATION, rx.recv()).await {
+        'worker: while let Ok(Some(message)) = timeout(WORKER_KEEPALIVE_DURATION, rx.recv()).await {
             log::trace!(
                 "Worker {worker_id} received a message from {}",
                 message.envelope.mail_from
@@ -243,15 +243,67 @@ impl Worker {
                 &https_client,
                 dns_resolver.clone(),
                 destination.clone(),
-                message.envelope,
+                &message.envelope,
                 client_hostname.clone(),
             )
             .await;
-            if message.response_tx.send(result).is_err() {
+
+            if message.response_tx.send(result.clone()).is_err() {
                 log::error!(
                     "Worker {worker_id} ({destination}) failed to send response to transport handler."
                 );
             };
+
+            // If all transport channels failed, we enter "probing" mode,
+            // which defers everything immediately until a retry succeeds.
+            // This way we prevent large delays on group chats when some relay is down.
+            if result.is_err_and(|smtp_response| smtp_response.starts_with("421")) {
+                log::error!("Worker {worker_id} ({destination}) entering probing mode.");
+                // this channel is just to kill the task and get rx back
+                let (deferrer_tx, mut deferrer_rx) = oneshot::channel::<()>();
+                let deferrer_task = tokio::spawn(async move {
+                    loop {
+                        if deferrer_rx.try_recv().is_ok() {
+                            return rx;
+                        }
+                        // timeout here is so that the task can exit, even if no message arrive
+                        if let Ok(Some(m)) = timeout(Duration::from_secs(5), rx.recv()).await {
+                            _ = m
+                                .response_tx
+                                .send(Ok("421 All channels temporarily unreachable".to_string()));
+                        }
+                    }
+                });
+                'probing: loop {
+                    let result = Self::handle_single_domain(
+                        tls_resumption_store.clone(),
+                        &mut smtp_connection,
+                        context.clone(),
+                        mxdeliv_unsupported_hosts.clone(),
+                        &https_client,
+                        dns_resolver.clone(),
+                        destination.clone(),
+                        &message.envelope,
+                        client_hostname.clone(),
+                    )
+                    .await;
+
+                    if !result.is_err_and(|smtp_response| smtp_response.starts_with("421")) {
+                        if deferrer_tx.send(()).is_ok()
+                            && let Ok(Ok(restored_rx)) =
+                                // this timeout must be larger than one inside deferrer_task
+                                timeout(Duration::from_secs(10), deferrer_task).await
+                        {
+                            rx = restored_rx;
+                        } else {
+                            log::error!("Worker {worker_id}: join error exiting probing mode.");
+                            break 'worker;
+                        }
+                        log::info!("Worker {worker_id} ({destination}) exiting probing mode.");
+                        break 'probing;
+                    }
+                }
+            }
         }
 
         log::info!("Worker {worker_id} for domain {destination} shutting down...");
@@ -270,7 +322,7 @@ impl Worker {
         https_client: &HttpsClient,
         dns_resolver: Arc<TokioResolver>,
         domain: AddressDomain,
-        envelope: Envelope,
+        envelope: &Envelope,
         client_hostname: String,
     ) -> Result<String, String>
     where
@@ -368,7 +420,7 @@ impl Worker {
                 match Self::https_delivery(
                     https_client,
                     mx_host.clone(),
-                    &envelope,
+                    envelope,
                     allow_invalid_cert,
                 )
                 .await
@@ -392,7 +444,7 @@ impl Worker {
             match crate::smtp_client::send(
                 &mx_host,
                 SMTP_PORT,
-                &envelope,
+                envelope,
                 client_config,
                 dns_resolver.clone(),
                 smtp_connection,
