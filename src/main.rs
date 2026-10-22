@@ -51,7 +51,11 @@ use std::env;
 use std::process;
 use std::str::FromStr;
 use std::sync::Arc;
+use tikv_jemallocator::Jemalloc;
 use tokio::net::TcpStream;
+
+#[global_allocator]
+static GLOBAL: Jemalloc = Jemalloc;
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq)]
 enum Mode {
