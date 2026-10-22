@@ -243,20 +243,21 @@ where
 
         log::debug!("Received: {cmd}");
 
-        if cmd.to_uppercase().starts_with("HELO") {
+        let cmd_uppercase = cmd.to_uppercase();
+        if cmd_uppercase.starts_with("HELO") {
             smtp_write!("250-filtermail\r\n250 OK\r\n");
-        } else if cmd.to_uppercase().starts_with("EHLO")
+        } else if cmd_uppercase.starts_with("EHLO")
             // We support LMTP, but it's not validated;
             // service that expects LMTP will send LMTP responses no matter the greeting.
             // Sufficient for our internal use case.
-            || cmd.to_uppercase().starts_with("LHLO")
+            || cmd_uppercase.starts_with("LHLO")
         {
             smtp_write!("250-filtermail\r\n250-8BITMIME\r\n250 OK\r\n");
-        } else if cmd.to_uppercase().starts_with("MAIL FROM:<>") {
+        } else if cmd_uppercase.starts_with("MAIL FROM:<>") {
             // bounce message
             transaction.envelope.mail_from = String::new();
             smtp_write!("{OK_250}\r\n");
-        } else if cmd.to_uppercase().starts_with("MAIL FROM:") {
+        } else if cmd_uppercase.starts_with("MAIL FROM:") {
             if let Some(from) = extract_address(cmd) {
                 if let Err(e) = handler.handle_mail_from(&from) {
                     smtp_write!("{}\r\n", e);
@@ -268,7 +269,7 @@ where
                 log::warn!("Invalid MAIL FROM command. Can't extract address. Received: {cmd}");
                 smtp_write!("500 Invalid address in MAIL FROM\r\n");
             }
-        } else if cmd.to_uppercase().starts_with("RCPT TO:") {
+        } else if cmd_uppercase.starts_with("RCPT TO:") {
             if let Some(to) = extract_address(cmd) {
                 if let Err(e) = handler.handle_rcpt_to(&to, &mut transaction) {
                     smtp_write!("{}\r\n", e);
@@ -277,13 +278,13 @@ where
                 transaction.envelope.rcpt_to.push(to);
                 smtp_write!("{OK_250}\r\n");
             }
-        } else if cmd.to_uppercase().starts_with("DATA") {
+        } else if cmd_uppercase.starts_with("DATA") {
             if let Err(e) = handler.handle_data_start(&transaction) {
                 smtp_write!("{}\r\n", e);
                 continue 'connection;
             }
             smtp_write!("354 End data with <CR><LF>.<CR><LF>\r\n");
-            let mut data = Vec::new();
+            let mut data = Vec::with_capacity(max_size);
             let mut data_line = String::new();
             'data_read: loop {
                 data_line.clear();
@@ -335,13 +336,13 @@ where
                 break 'connection;
             }
             transaction = Transaction::default();
-        } else if cmd.to_uppercase().starts_with("QUIT") {
+        } else if cmd_uppercase.starts_with("QUIT") {
             smtp_write!("221 OK\r\n");
             break 'connection;
-        } else if cmd.to_uppercase().starts_with("RSET") {
+        } else if cmd_uppercase.starts_with("RSET") {
             transaction = Transaction::default();
             smtp_write!("{OK_250}\r\n");
-        } else if cmd.to_uppercase().starts_with("NOOP") {
+        } else if cmd_uppercase.starts_with("NOOP") {
             smtp_write!("{OK_250}\r\n");
         } else {
             smtp_write!("500 Command not recognized\r\n");
