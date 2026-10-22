@@ -285,21 +285,20 @@ where
             }
             smtp_write!("354 End data with <CR><LF>.<CR><LF>\r\n");
             let mut data = Vec::with_capacity(max_size);
-            let mut data_line = String::new();
             'data_read: loop {
-                data_line.clear();
-                if bufstream.read_line(&mut data_line).await? == 0 {
+                line.clear();
+                if bufstream.read_line(&mut line).await? == 0 {
                     log::warn!("Unexpected EoF while receiving DATA! Closing connection.");
                     break 'connection;
                 }
 
-                if data_line == ".\r\n" {
+                if line == ".\r\n" {
                     break 'data_read;
                 }
 
-                if !data_line.ends_with("\r\n") {
+                if !line.ends_with("\r\n") {
                     log::warn!("Malformed DATA line without CRLF ending! Closing connection.");
-                    data.extend_from_slice(data_line.as_bytes());
+                    data.extend_from_slice(line.as_bytes());
                     let eml_path = log_eml("malformed-data", &data)
                         .await
                         .map(|path| path.to_string_lossy().to_string())
@@ -311,7 +310,7 @@ where
                     break 'connection;
                 }
 
-                data.extend_from_slice(data_line.as_bytes());
+                data.extend_from_slice(line.as_bytes());
 
                 if data.len() > max_size {
                     smtp_write!("552 Message exceeds maximum size\r\n");
