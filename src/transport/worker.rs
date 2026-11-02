@@ -13,11 +13,13 @@ use std::collections::BTreeMap;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio::sync::mpsc::OwnedPermit;
+use tokio::sync::mpsc::error::TrySendError;
 use tokio::sync::{mpsc, oneshot};
 use tokio::task;
 use tokio::task::JoinHandle;
 use tokio::time::timeout;
 use tokio_rustls::rustls;
+use tokio_util::sync::CancellationToken;
 
 #[cfg(not(test))]
 const SMTP_PORT: u16 = 25;
@@ -145,6 +147,7 @@ where
                     self.mxdeliv_unsupported_hosts.clone(),
                     self.dns_resolver.clone(),
                     self.inner.clone(),
+                    self.queue_size,
                 ));
                 log::trace!("Worker {} spawned", handle.id());
                 let worker = Arc::new(Worker { tx, handle });
@@ -207,6 +210,7 @@ impl Drop for Worker {
 }
 
 impl Worker {
+    #[expect(clippy::too_many_arguments)]
     pub async fn run<S>(
         destination: AddressDomain,
         mut rx: mpsc::Receiver<WorkerMessage>,
@@ -215,6 +219,7 @@ impl Worker {
         mxdeliv_unsupported_hosts: Arc<retainer::Cache<String, ()>>,
         dns_resolver: Arc<DnsResolver>,
         worker_pool: Arc<RwLock<BTreeMap<AddressDomain, Arc<Worker>>>>,
+        queue_size: usize,
     ) -> Result<(), crate::error::Error>
     where
         S: TcpStreamTrait + TcpConnect,
@@ -229,7 +234,7 @@ impl Worker {
         let https_client = HttpsClient::new(tls_resumption_store.clone())?;
         let mut smtp_connection: Option<SmtpConnection<S>> = None;
 
-        while let Ok(Some(message)) = timeout(WORKER_KEEPALIVE_DURATION, rx.recv()).await {
+        'worker: while let Ok(Some(message)) = timeout(WORKER_KEEPALIVE_DURATION, rx.recv()).await {
             log::trace!(
                 "Worker {worker_id} received a message from {}",
                 message.envelope.mail_from
@@ -242,15 +247,107 @@ impl Worker {
                 &https_client,
                 dns_resolver.clone(),
                 destination.clone(),
-                message.envelope,
+                &message.envelope,
                 client_hostname.clone(),
             )
             .await;
+
+            let should_enter_probing_mode = result
+                .as_ref()
+                .is_err_and(|smtp_response| smtp_response.starts_with("421"));
+
             if message.response_tx.send(result).is_err() {
                 log::error!(
                     "Worker {worker_id} ({destination}) failed to send response to transport handler."
                 );
             };
+
+            // If all transport channels failed, we enter "probing" mode,
+            // which defers everything immediately until the first success.
+            // This way we prevent large delays on group chats when some relay is down.
+            if should_enter_probing_mode {
+                log::warn!("Worker {worker_id} ({destination}) entering probing mode.");
+                // token to kill the task and get rx back
+                let drop_guard = CancellationToken::new().drop_guard();
+
+                // channel to get envelopes back after deferring
+                let (envelopes_tx, mut envelopes_rx) = mpsc::channel(queue_size);
+
+                let deferrer_task = {
+                    let token = drop_guard.token().clone();
+                    let worker_id = worker_id.clone();
+                    let destination = destination.clone();
+                    tokio::spawn(async move {
+                        loop {
+                            tokio::select! {
+                                biased;
+                                _ = token.cancelled() => {
+                                    return rx;
+                                }
+                                message = rx.recv() => {
+                                    if let Some(m) = message {
+                                        // error only on Closed, as full queue is an expected behavior.
+                                        if let Err(err) = envelopes_tx.try_send(m.envelope) && matches!(err, TrySendError::Closed(_)) {
+                                            log::error!("Worker {worker_id}[probing] ({destination}) failed to send back envelope from deferrer task.");
+                                        };
+                                        if m.response_tx.send(Ok("421 All channels temporarily unreachable".to_string())).is_err() {
+                                            log::error!("Worker {worker_id}[probing] ({destination}) failed to send response to transport handler.");
+                                        };
+                                    } else {
+                                        return rx;
+                                    }
+                                },
+                            }
+                        }
+                    })
+                };
+
+                // Similar to 'worker, but we receive bare envelopes, as deferrer task already sent responses.
+                'probing: loop {
+                    let envelope = match timeout(WORKER_KEEPALIVE_DURATION, envelopes_rx.recv())
+                        .await
+                    {
+                        Ok(Some(envelope)) => envelope,
+                        Ok(None) => {
+                            // this should be unreachable
+                            log::error!(
+                                "Worker {worker_id}[probing] ({destination}): deferrer task unexpectedly closed the channel."
+                            );
+                            break 'worker;
+                        }
+                        Err(_) => break 'worker,
+                    };
+
+                    let result = Self::handle_single_domain(
+                        tls_resumption_store.clone(),
+                        &mut smtp_connection,
+                        context.clone(),
+                        mxdeliv_unsupported_hosts.clone(),
+                        &https_client,
+                        dns_resolver.clone(),
+                        destination.clone(),
+                        &envelope,
+                        client_hostname.clone(),
+                    )
+                    .await;
+
+                    if !result.is_err_and(|smtp_response| smtp_response.starts_with("421")) {
+                        drop(drop_guard);
+                        if let Ok(restored_rx) = deferrer_task.await {
+                            rx = restored_rx;
+                        } else {
+                            log::error!(
+                                "Worker {worker_id}[probing]: join error exiting probing mode."
+                            );
+                            break 'worker;
+                        }
+                        log::info!(
+                            "Worker {worker_id}[probing] ({destination}) exiting probing mode."
+                        );
+                        break 'probing;
+                    }
+                }
+            }
         }
 
         log::info!("Worker {worker_id} for domain {destination} shutting down...");
@@ -269,7 +366,7 @@ impl Worker {
         https_client: &HttpsClient,
         dns_resolver: Arc<DnsResolver>,
         domain: AddressDomain,
-        envelope: Envelope,
+        envelope: &Envelope,
         client_hostname: String,
     ) -> Result<String, String>
     where
@@ -365,7 +462,7 @@ impl Worker {
                 match Self::https_delivery(
                     https_client,
                     mx_host.clone(),
-                    &envelope,
+                    envelope,
                     allow_invalid_cert,
                 )
                 .await
@@ -389,7 +486,7 @@ impl Worker {
             match crate::smtp_client::send(
                 &mx_host,
                 SMTP_PORT,
-                &envelope,
+                envelope,
                 client_config,
                 dns_resolver.clone(),
                 smtp_connection,
