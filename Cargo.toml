@@ -54,7 +54,7 @@ bytes = "1.12.1"
 tikv-jemallocator = "0.7.0"
 
 [dev-dependencies]
-rstest = "0.26.1"
+rstest = "0.28.0"
 testresult = "0.4.1"
 insta = "1.48.0"
 serial_test = "4.0.1"
