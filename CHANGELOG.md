@@ -1,3 +1,22 @@
+## 0.7.8 - 2026-11-04
+
+### Features
+
+- Set read/write timeouts to incoming HTTP streams
+- Set read/write timeouts for SMTP server streams (#257)
+- Introduce a timeout for WorkerMessage (#258)
+
+### Miscellaneous Tasks
+
+- Add cargo-deny and apply security fixes (#269)
+
+### Performance
+
+- Avoid copying armored payload in check_armored_payload()
+- Switch to jemalloc (#265)
+- *(smtp-server)* Pre-allocate data vector to max_size (#264)
+- *(smtp-server)* Reuse line buffer for reading DATA lines
+- *(smtp-server)* Shrink_to_fit() data buffers at the end of DATA command
 ## 0.7.7 - 2026-09-11
 
 ### Performance
