@@ -92,7 +92,7 @@ jobs:
 
   relay-test:
     name: Test the relay with cmlxc and custom filtermail
-    uses: chatmail/cmlxc/.github/workflows/lxc-test.yml@main
+    uses: chatmail/cmlxc/.github/workflows/lxc-test.yml@j-g00da/increase-workflow-timeout
     with:
       cmlxc_commands: |
         sudo apt-get update && sudo apt-get install -y musl-tools
