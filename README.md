@@ -144,7 +144,7 @@ but implements a custom parser that only requires a small subset of configuratio
 - `postfix_reinject_port_incoming` - port to reinject messages to postfix in incoming mode,
   defaults to `10026`.
 - `max_message_size` - maximum allowed message size in bytes,
-  defaults to `31457280` (30 MiB).
+  defaults to `52428800` (50 MiB).
 - `max_user_send_per_minute` - email sending rate per user and minute,
   defaults to `60`.
 - `max_user_send_burst_size` - per-user max burst size for sending rate limiting (GCRA bucket capacity),

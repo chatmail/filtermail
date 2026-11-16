@@ -108,7 +108,7 @@ impl Config {
         10026
     }
     const fn default_max_message_size() -> usize {
-        31457280
+        52428800
     }
     const fn default_max_user_send_per_minute() -> NonZeroU32 {
         NonZeroU32::new(60).expect("60 != 0")
