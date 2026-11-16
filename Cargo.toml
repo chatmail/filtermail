@@ -23,7 +23,7 @@ governor = { version = "0.10.4", default-features = false, features = [
   "std",
   "dashmap",
 ] }
-viadkim = { git = "https://github.com/chatmail/viadkim.git", rev = "202b95f38ed32594318a779dc4a793e5719e7751" }
+viadkim = { git = "https://github.com/chatmail/viadkim.git", rev = "50b9daf04af66221aeff882408e66bb8b5a65bcf" }
 hickory-resolver = { version = "0.26.1", features = ["dnssec-aws-lc-rs"] }
 lru = "0.18.0"
 parking_lot = "0.12.5"
