@@ -307,12 +307,17 @@ where
 
     // RSET reused connection or fallback to a new connection
     let reused = if reused {
-        smtp_write!(b"RSET\r\n");
-        smtp_read!("RSET");
+        let rset: Result<(), crate::error::Error> = async {
+            smtp_write!(b"RSET\r\n");
+            smtp_read!("RSET");
+            Ok(())
+        }
+        .await;
         // We don't want to defer if the connection was closed already by the server.
         // This is a special case where we end up reading message sent before we sent RSET.
-        // e.g.: 421 example.org Service closing transmission channel - command timeout
-        if response.starts_with("421") {
+        // e.g.: 421 example.org Service closing transmission channel - command timeout.
+        // Or the connection was closed due to a restart, an I/O or TLS error or no answer.
+        if rset.is_err() || response.is_empty() || response.starts_with("421") {
             log::debug!("Reused connection is dead; establishing new connection...");
             let stream: S = establish_tcp_connection(
                 address,
