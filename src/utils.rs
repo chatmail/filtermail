@@ -1,10 +1,7 @@
-use hickory_resolver::{TokioResolver, proto::dnssec::TrustAnchors};
 use mailparse::MailAddr;
 use std::fmt::{Display, Formatter};
 use std::path::PathBuf;
 use std::str::FromStr;
-use std::sync::Arc;
-use std::time::Duration;
 
 /// Extracts the first email address found in SMTP command or email header.
 ///
@@ -122,25 +119,6 @@ pub async fn log_eml(reason: &str, data: &[u8]) -> Result<PathBuf, crate::error:
     path.push(filename);
     tokio::fs::write(&path, data).await?;
     Ok(path)
-}
-
-/// Creates a DNS resolver with DNSSEC enabled and system configuration (resolv.conf).
-pub fn build_resolver() -> Result<TokioResolver, crate::error::Error> {
-    let mut builder = TokioResolver::builder_tokio()?
-        // https://github.com/hickory-dns/hickory-dns/issues/3519
-        .with_trust_anchor(Arc::new(TrustAnchors::default()));
-
-    // disable negative caching to prevent possible federation problems
-    builder.options_mut().negative_max_ttl = Some(Duration::ZERO);
-
-    let dns_resolver = builder.build()?;
-
-    assert!(
-        dns_resolver.options().validate,
-        "incorrect resolver config: DNSSEC disabled; exiting"
-    );
-
-    Ok(dns_resolver)
 }
 
 #[cfg(test)]

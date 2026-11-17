@@ -11,7 +11,7 @@ pub enum Error {
     #[error(transparent)]
     Io(#[from] std::io::Error),
     #[error(transparent)]
-    Resolve(#[from] hickory_resolver::net::NetError),
+    Resolve(#[from] n0_dns_resolver::Error),
     #[error("OpenPGP packet header is truncated - can't validate!")]
     TruncatedHeader,
     #[error("Unable to send email, Error during {context}, host {host} said: {raw_smtp_answer}")]

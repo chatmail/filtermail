@@ -1,5 +1,5 @@
-use hickory_resolver::{TokioResolver, proto::rr::Name};
 use lru::LruCache;
+use n0_dns_resolver::DnsResolver;
 use std::io;
 use std::num::NonZeroUsize;
 use std::pin::Pin;
@@ -28,16 +28,16 @@ fn normalize_rdata(txt_data: &str) -> String {
 /// DNS resolver for DKIM TXT records, that caches RDATA in memory.
 #[derive(Clone)]
 struct CachedResolver {
-    dns_resolver: Arc<TokioResolver>,
+    dns_resolver: Arc<DnsResolver>,
     // Note: Arc is required despite we are holding the whole handler in an Arc,
     // because viadkim will internally clone the resolver (LookupTxt + Clone + 'static)
     // to parallelize lookups in case of multiple signatures...
-    cache: Arc<parking_lot::Mutex<LruCache<Name, Vec<Vec<u8>>>>>,
+    cache: Arc<parking_lot::Mutex<LruCache<String, Vec<Vec<u8>>>>>,
 }
 
 impl CachedResolver {
     /// Creates a new [`CachedResolver`].
-    pub fn new(dns_resolver: Arc<TokioResolver>) -> Self {
+    pub fn new(dns_resolver: Arc<DnsResolver>) -> Self {
         let cache = Arc::new(parking_lot::Mutex::new(LruCache::new(LRU_CACHE_CAPACITY)));
 
         Self {
@@ -50,17 +50,10 @@ impl CachedResolver {
     ///
     /// Fails silently.
     fn invalidate_cache(&self, selector: &str, domain: &str) {
-        let selector_domain_str = format!("{}._domainkey.{}.", selector, domain);
-        if let Ok(selector_domain) = Name::from_ascii(&selector_domain_str) {
-            let mut cache = self.cache.lock();
-            cache.pop(&selector_domain);
-            log::debug!("Cache invalidated for {}", selector_domain_str);
-        } else {
-            log::warn!(
-                "Failed to parse selector domain for cache invalidation: {}",
-                selector_domain_str
-            );
-        }
+        let selector_domain = format!("{}._domainkey.{}.", selector, domain);
+        let mut cache = self.cache.lock();
+        cache.pop(&selector_domain);
+        log::debug!("Cache invalidated for {}", selector_domain);
     }
 }
 
@@ -69,44 +62,33 @@ impl LookupTxt for CachedResolver {
     type Query<'a> = Pin<Box<dyn Future<Output = io::Result<Self::Answer>> + Send + 'a>>;
 
     fn lookup_txt(&self, domain: &str) -> Self::Query<'_> {
-        let name = Name::from_ascii(domain);
+        let domain = domain.to_owned();
         Box::pin(async move {
-            let name = name.map_err(|_| io::ErrorKind::InvalidInput)?;
-
             {
                 let mut cache = self.cache.lock();
-                if let Some(txts) = cache.get(&name) {
+                if let Some(txts) = cache.get(&domain) {
                     let txts: Self::Answer = Box::new(txts.clone().into_iter().map(Ok));
-                    log::debug!("Using cached TXT records for {}", name);
+                    log::debug!("Using cached TXT records for {}", domain);
                     return Ok(txts);
                 }
             }
 
-            log::debug!("Trying to resolve TXT records for {}", name);
+            log::debug!("Trying to resolve TXT records for {}", domain);
             let txts: Vec<Vec<u8>> = {
                 let lookup = self
                     .dns_resolver
-                    .txt_lookup(name.clone())
+                    .lookup_txt(&domain)
                     .await
                     .map_err(io::Error::other)?;
 
-                // viadkim would filter out non-DKIM TXT records,
-                // but we filter it here anyway so that we know which one should be cached.
                 lookup
-                    .answers()
-                    .iter()
-                    .filter(|record| {
-                        // Select only TXT records.
-                        // When resolving TXT query, CNAMEs are also returned as answers.
-                        // We want to filter out CNAMEs first.
-                        matches!(record.data, hickory_resolver::proto::rr::RData::TXT(_))
-                    })
+                    .into_iter()
                     // We don't check all records, as this can be a DoS attack vector.
                     // In theory, selector domains should only have a single TXT record.
                     // In practice, we check at most 3, just in case of weird configuration.
                     .take(3)
                     .map(|txt| {
-                        let rdata = txt.data.to_string();
+                        let rdata = txt.to_string();
                         log::trace!("TXT (raw rdata): {:?}", rdata);
                         let normalized = normalize_rdata(&rdata);
                         log::trace!("TXT (concatenated and normalized): {:?}", normalized);
@@ -117,7 +99,7 @@ impl LookupTxt for CachedResolver {
 
             {
                 let mut cache = self.cache.lock();
-                cache.put(name, txts.clone());
+                cache.put(domain, txts.clone());
             }
 
             let txts: Self::Answer = Box::new(txts.into_iter().map(Ok));
@@ -185,7 +167,7 @@ pub struct DkimVerifier {
 
 impl DkimVerifier {
     /// Creates a new [`DkimVerifier`] with the provided resolver.
-    pub fn new(dns_resolver: Arc<TokioResolver>) -> Self {
+    pub fn new(dns_resolver: Arc<DnsResolver>) -> Self {
         let resolver = CachedResolver::new(dns_resolver).into();
         let config = viadkim::Config {
             lookup_timeout: Duration::from_secs(60),

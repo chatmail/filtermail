@@ -1,6 +1,7 @@
 use crate::smtp_server::Envelope;
 use crate::tcp::{TcpConnect, TcpStreamTrait};
-use hickory_resolver::TokioResolver;
+use n0_dns_resolver::DnsResolver;
+use std::net::IpAddr;
 use std::pin::Pin;
 use std::sync::Arc;
 use std::task::{Context, Poll};
@@ -125,15 +126,29 @@ impl<S: TcpStreamTrait> AsyncRead for SmtpStream<S> {
 async fn to_socket_addrs(
     address: &str,
     port: u16,
-    dns_resolver: Arc<TokioResolver>,
+    dns_resolver: Arc<DnsResolver>,
 ) -> Result<Vec<std::net::SocketAddr>, crate::error::Error> {
     log::trace!("Resolving {address}...");
     if let Ok(ip) = address.parse() {
         Ok(vec![std::net::SocketAddr::new(ip, port)])
     } else {
-        let lookup = dns_resolver.lookup_ip(address).await?;
-        Ok(lookup
-            .iter()
+        let (r1, r2) = tokio::join! {
+            dns_resolver.lookup_ipv4(address),
+            dns_resolver.lookup_ipv6(address)
+        };
+
+        // we only fail if both lookups have failed.
+        if r2.is_err()
+            && let Err(err) = r1
+        {
+            return Err(err.into());
+        }
+
+        Ok(r1
+            .unwrap_or(vec![])
+            .into_iter()
+            .map(IpAddr::V4)
+            .chain(r2.unwrap_or(vec![]).into_iter().map(IpAddr::V6))
             .map(|ip| std::net::SocketAddr::new(ip, port))
             .collect())
     }
@@ -143,7 +158,7 @@ async fn to_socket_addrs(
 async fn establish_tcp_connection<S>(
     address: &str,
     port: u16,
-    dns_resolver: Arc<TokioResolver>,
+    dns_resolver: Arc<DnsResolver>,
     context: S::ConnectionContext,
 ) -> Result<S, crate::error::Error>
 where
@@ -215,7 +230,7 @@ pub async fn send<S>(
     port: u16,
     envelope: &Envelope,
     config: ClientConfig<'_, S>,
-    dns_resolver: Arc<TokioResolver>,
+    dns_resolver: Arc<DnsResolver>,
     connection: &mut Option<SmtpConnection<S>>,
 ) -> Result<(), crate::error::Error>
 where

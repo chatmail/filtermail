@@ -215,6 +215,7 @@ mod tests {
     use super::*;
     use crate::smtp_server::{Envelope, MockHandler, run_smtp_server};
     use crate::tcp::rec_stream::RecTcpStream;
+    use n0_dns_resolver::DnsResolver;
     use rstest::{fixture, rstest};
     use serial_test::serial;
     use std::sync::Arc;
@@ -295,7 +296,7 @@ mod tests {
             FILTERMAIL_PORT,
             envelope,
             client_config,
-            Arc::new(crate::utils::build_resolver()?),
+            Arc::new(DnsResolver::system_with_fallback()),
             &mut None,
         )
         .await;
