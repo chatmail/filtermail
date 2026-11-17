@@ -137,9 +137,7 @@ mod tests {
     #[case("t6@example.org", Some("t6@example.org".to_string()))]
     #[case("t7@[192.0.2.0]", Some("t7@[192.0.2.0]".to_string()))]
     #[case("<t7@[192.0.2.0]>", Some("t7@[192.0.2.0]".to_string()))]
-    // This is a bug in mailparse, it refuses to parse IPv6 without "<>" around.
-    // https://github.com/staktrace/mailparse/issues/137
-    #[case("t8@[IPv6:2001:db8::1]", None)]
+    #[case("t8@[IPv6:2001:db8::1]", Some("t8@[ipv6:2001:db8::1]".to_string()))]
     #[case("<t8@[IPv6:2001:db8::1]>", Some("t8@[ipv6:2001:db8::1]".to_string()))]
     fn test_extract_address(#[case] input: &str, #[case] expected: Option<String>) {
         let result = extract_address(input);
