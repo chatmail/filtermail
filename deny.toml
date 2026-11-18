@@ -2,6 +2,10 @@
 ignore = [
   # No fix yet. (2026-10-22)
   "RUSTSEC-2023-0071",
+
+  # Unmaintained pin-utils. Upstream:
+  # governor, hickory-resolver, hyper-util, hyper-rustls, (dev: serial_test, rstest)
+  "RUSTSEC-2026-0441",
 ]
 
 [bans]
