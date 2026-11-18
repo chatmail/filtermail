@@ -7,17 +7,17 @@ use crate::smtp_responses::ENCRYPTION_NEEDED_523;
 pub use crate::smtp_server::Envelope;
 use crate::smtp_server::{SmtpHandler, Transaction};
 use crate::tcp::{TcpConnect, TcpStreamTrait};
-use crate::utils::{AddressDomain, build_resolver, extract_address, log_eml};
+use crate::utils::{AddressDomain, extract_address, log_eml};
 use async_trait::async_trait;
-use hickory_resolver::TokioResolver;
 use mailparse::{MailHeaderMap, parse_mail};
+use n0_dns_resolver::DnsResolver;
 use std::str::FromStr;
 use std::sync::Arc;
 
 /// Handler for incoming SMTP messages.
 pub struct IncomingBeforeQueueHandler<S: TcpConnect> {
     config: Config,
-    dns_resolver: Arc<TokioResolver>,
+    dns_resolver: Arc<DnsResolver>,
     dkim_verifier: DkimVerifier,
     skip_dkim: bool,
     connection_context: S::ConnectionContext,
@@ -29,7 +29,7 @@ where
     S::ConnectionContext: Default,
 {
     pub fn new(config: Config, skip_dkim: bool) -> Result<Self, crate::error::Error> {
-        let dns_resolver = Arc::new(build_resolver()?);
+        let dns_resolver = Arc::new(DnsResolver::system_with_fallback());
         Ok(Self {
             config,
             dns_resolver: dns_resolver.clone(),

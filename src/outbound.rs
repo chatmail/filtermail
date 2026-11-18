@@ -6,19 +6,19 @@ use crate::smtp_responses::ENCRYPTION_NEEDED_523;
 use crate::smtp_responses::OK_250;
 use crate::smtp_server::{SmtpHandler, Transaction};
 use crate::tcp::{TcpConnect, TcpStreamTrait};
-use crate::utils::{build_resolver, extract_address};
+use crate::utils::extract_address;
 use async_trait::async_trait;
 use governor::clock::MonotonicClock;
 use governor::middleware::NoOpMiddleware;
 use governor::{Quota, RateLimiter};
-use hickory_resolver::TokioResolver;
 use mailparse::{MailHeaderMap, parse_mail};
+use n0_dns_resolver::DnsResolver;
 use std::sync::Arc;
 
 /// Handler for outgoing SMTP messages.
 pub struct OutgoingBeforeQueueHandler<S: TcpConnect> {
     config: Config,
-    dns_resolver: Arc<TokioResolver>,
+    dns_resolver: Arc<DnsResolver>,
 
     // We explicitly use standard MonotonicClock here.
     // governor 0.10.4 by default uses "quanta" clock
@@ -44,7 +44,7 @@ where
     pub fn new(config: Config) -> Result<Self, crate::error::Error> {
         let quota = Quota::per_minute(config.max_user_send_per_minute)
             .allow_burst(config.max_user_send_burst_size);
-        let dns_resolver = Arc::new(build_resolver()?);
+        let dns_resolver = Arc::new(DnsResolver::system_with_fallback());
         let send_rate_limiter = RateLimiter::dashmap_with_clock(quota, MonotonicClock);
         Ok(Self {
             config,

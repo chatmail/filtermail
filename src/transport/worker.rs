@@ -4,11 +4,10 @@ use crate::smtp_responses::{OK_HTTPS_250, OK_SMTP_250};
 use crate::smtp_server::Envelope;
 use crate::tcp::{TcpConnect, TcpStreamTrait};
 use crate::transport::{HEADER_MAIL_FROM, HEADER_RCPT_TO, https_client::HttpsClient};
-use crate::utils::{AddressDomain, build_resolver};
-use hickory_resolver::TokioResolver;
-use hickory_resolver::proto::rr::RData;
+use crate::utils::AddressDomain;
 use http_body_util::BodyExt;
 use hyper::body::Bytes;
+use n0_dns_resolver::DnsResolver;
 use parking_lot::RwLock;
 use std::collections::BTreeMap;
 use std::sync::Arc;
@@ -52,7 +51,7 @@ pub struct WorkerPool<S: TcpConnect> {
     connection_context: S::ConnectionContext,
     mxdeliv_unsupported_hosts: Arc<retainer::Cache<String, ()>>,
     monitor_handle: JoinHandle<()>,
-    dns_resolver: Arc<TokioResolver>,
+    dns_resolver: Arc<DnsResolver>,
     queue_size: usize,
     capacity: usize,
 }
@@ -63,7 +62,7 @@ where
     S::ConnectionContext: Default,
 {
     pub fn new(config: Config) -> Result<Self, crate::error::Error> {
-        let dns_resolver = Arc::new(build_resolver()?);
+        let dns_resolver = Arc::new(DnsResolver::system_with_fallback());
 
         let mxdeliv_cache = Arc::new(retainer::Cache::new());
         let mxdeliv_cache_clone = mxdeliv_cache.clone();
@@ -214,7 +213,7 @@ impl Worker {
         client_hostname: String,
         context: S::ConnectionContext,
         mxdeliv_unsupported_hosts: Arc<retainer::Cache<String, ()>>,
-        dns_resolver: Arc<TokioResolver>,
+        dns_resolver: Arc<DnsResolver>,
         worker_pool: Arc<RwLock<BTreeMap<AddressDomain, Arc<Worker>>>>,
     ) -> Result<(), crate::error::Error>
     where
@@ -268,7 +267,7 @@ impl Worker {
         context: S::ConnectionContext,
         mxdeliv_unsupported_hosts: Arc<retainer::Cache<String, ()>>,
         https_client: &HttpsClient,
-        dns_resolver: Arc<TokioResolver>,
+        dns_resolver: Arc<DnsResolver>,
         domain: AddressDomain,
         envelope: Envelope,
         client_hostname: String,
@@ -298,17 +297,12 @@ impl Worker {
                 }
                 let query = format!("{mx_domain}.");
 
-                match dns_resolver.mx_lookup(query).await {
+                let mx_hosts = match dns_resolver.lookup_mx(query).await {
                     Ok(mx_records) => {
                         let mut hosts: Vec<(u16, String)> = Vec::new();
-                        for mx_record in mx_records.answers() {
-                            let mx = match mx_record.data {
-                                RData::MX(ref mx) => mx,
-                                _ => continue,
-                            };
-
+                        for mx in mx_records {
                             // Null MX / RFC7505
-                            if mx.exchange.is_root() {
+                            if mx.exchange.is_empty() {
                                 // From RFC7505 section 3:
                                 // > A domain that advertises a null MX MUST NOT
                                 // > advertise any other MX RR.
@@ -318,25 +312,28 @@ impl Worker {
                                         .to_string(),
                                 );
                             }
-
-                            let host = mx.exchange.to_string().trim_end_matches('.').to_string();
-                            hosts.push((mx.preference, host))
+                            hosts.push((mx.preference, mx.exchange))
                         }
-                        hosts.sort();
+                        hosts.sort_by_key(|(pref, _)| *pref);
                         hosts
                     }
-                    Err(e) => {
-                        if e.is_no_records_found() {
-                            // "implicit MX" as described by section 5.1 of RFC5321
-                            // https://datatracker.ietf.org/doc/html/rfc5321#section-5.1
-                            log::debug!("No MX record found, using implicit MX: {mx_domain}");
-                            vec![(0, mx_domain)]
-                        } else if e.is_nx_domain() {
+                    Err(e) => match e {
+                        n0_dns_resolver::Error::NxDomain { .. } => {
                             return Err(format!("512 Domain {mx_domain} does not exist"));
-                        } else {
+                        }
+                        _ => {
                             return Err(format!("421 DNS resolution failed for {mx_domain}"));
                         }
-                    }
+                    },
+                };
+
+                if mx_hosts.is_empty() {
+                    // "implicit MX" as described by section 5.1 of RFC5321
+                    // https://datatracker.ietf.org/doc/html/rfc5321#section-5.1
+                    log::debug!("No MX record found, using implicit MX: {mx_domain}");
+                    vec![(0, mx_domain)]
+                } else {
+                    mx_hosts
                 }
             }
         };
