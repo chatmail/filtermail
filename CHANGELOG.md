@@ -1,3 +1,18 @@
+## 0.7.9 - 2026-11-19
+
+### Bug Fixes
+
+- *(smtp-client)* Reconnect when a reused connection was closed without a 421
+
+### Features
+
+- *(resolver)* Switch to a simpler n0-dns-resolver (#287)
+- Increase default max message size to 50 MiB (#283)
+- *(transport)* Enter probing mode upon connection failure (#260)
+
+### Miscellaneous Tasks
+
+- Ignore RUSTSEC-2026-0441 for now (#284)
 ## 0.7.8 - 2026-11-04
 
 ### Features

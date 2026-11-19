@@ -626,7 +626,7 @@ checksum = "64cd1e32ddd350061ae6edb1b082d7c54915b5c672c389143b9a63403a109f24"
 
 [[package]]
 name = "filtermail"
-version = "0.7.8"
+version = "0.7.9"
 dependencies = [
  "async-trait",
  "base64",
