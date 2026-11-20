@@ -1,5 +1,6 @@
 //! Error types.
 
+use crate::smtp_responses::LOCAL_ERROR_451;
 use tokio_rustls::rustls;
 
 /// Error type for filtermail.
@@ -34,6 +35,10 @@ pub enum Error {
     HyperHttp(#[from] hyper::http::Error),
     #[error(transparent)]
     HyperClient(#[from] hyper_util::client::legacy::Error),
+    #[error(transparent)]
+    ViadkimParseDomain(#[from] viadkim::signature::ParseDomainError),
+    #[error(transparent)]
+    ViadkimDecodeSigningKey(#[from] viadkim::crypto::DecodeSigningKeyError),
 }
 
 impl Error {
@@ -69,6 +74,8 @@ impl Error {
             Error::Hyper(_) | Error::HyperHttp(_) | Error::HyperClient(_) => {
                 "451 HTTP error".to_string()
             }
+
+            _ => LOCAL_ERROR_451.to_string(),
         }
     }
 

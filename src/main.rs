@@ -25,6 +25,7 @@
     clippy::bool_to_int_with_if
 )]
 mod config;
+mod dkim_signer;
 mod dkim_verifier;
 pub(crate) mod error;
 mod http_server;
@@ -187,7 +188,7 @@ async fn main() -> Result<(), error::Error> {
                 config.filtermail_lmtp_port_transport,
             );
             let max_size = config.max_message_size;
-            let handler = Arc::new(TransportHandler::<TcpStream>::new(config)?);
+            let handler = Arc::new(TransportHandler::<TcpStream>::new(config).await?);
             log::debug!("Transport SMTP server listening on {}:{}", addr.0, addr.1);
 
             if let Err(e) = run_smtp_server(&addr, handler, max_size).await {
