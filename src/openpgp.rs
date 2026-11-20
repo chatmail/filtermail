@@ -194,7 +194,7 @@ pub fn check_armored_payload(payload: &str, outgoing: bool) -> bool {
     let mut payload = payload.trim_start_matches("\r\n");
 
     // Remove CRC24.
-    if let Some((left, _)) = payload.rsplit_once('=') {
+    if let Some((left, _)) = payload.rsplit_once("\r\n=") {
         payload = left;
     }
 
@@ -244,6 +244,42 @@ uj3GwEFrHS+Xuf2UDgpszYT3hI2cL/kUtGakVR7m7vVMZqXBUbZdGAEb1PZNPwsI
 E4aMK02+EVB+tSN4Fzj99N2YD0inVYt+oPjr2tHhUS6aSGBNS/48Ki47DOg4Sxkn
 lkOWnEbCD+XTnbDd
 =agR5
+-----END PGP MESSAGE-----"#, (true, true))]
+    // Message without CRC24 checksum
+    #[case::valid(r#"-----BEGIN PGP MESSAGE-----
+
+wU4DAAAAAAAAAAASAQdAmrh4HSMiBijMhygye3dRxb+bevlyRty1JFynTF6uohIg
+YmJs86GWFSu2FliuOmdlsBc1J2AYlNPre4t8aT4LooPBTgMAAAAAAAAAABIBB0Dz
+982prkJogsIEHQ8dq3uAIsEiAIcFSmo48x8xCMTEaCDKwgZE7SA2Zt8EhT7pODhG
+r0czyDpr27IPYV/UojiTY9LEewEtbbDuppt7xp5tHkl5rIwCaDHmhE2Mk0MQ7TlE
+YSJqVk7rzJsrBXb9WgTB1jxybwqioxXBZxBD57hJjE7AV68vYOKNlzzAdy2RYVt0
+mNgXXdVLf3/aaqFaejq+1EH6EGwynhS8rPN/Sk7JmhzNKyHdJiZ9ITxWVgONkB9y
+ufr6CD4RYXuT5aizzWa73xP4zLv2Qe3IgVGfR1BKphsXwRsRnhjym5+MQREFq7mS
+H/5HnEURB9ypISIjpDwAoZYrBwtxVbSsl1aFQQoP7Fr0c0fOnGOBxR5P0WIoIpDg
+VuSjKHQk1P3pe04vI6eWyQuepGgdP7pJfUXMM7u54k8DMw1nU7zyvqt8YE1vsaGA
+Gr2evBY5NPW11MzIMC27HSDpcgIRUVkIG0lUXRJ8fhvvcVIoirERJTknx+tJzdmg
+8dYz7n+O7sxDY+OE/xbD6EzJyWUzVOpRceRPZkesI4w4hCYqO02E/WiCc1SgnYfS
++Gx2DkONHFlTR/eLEsXtRoa51JMNcqYmv+PqeRAF1MbfNe+j4OLmd/UQs6wjSV0+
+SGk2+GpWq0LiNavOttdGHVVg9gBR+LTZYzjVdrP2e9vDYd8RUsGcrEnfasmgwY90
+V5Qnybs6Gi+Nvr5Y6Tg9yaTGjFqKIC7l6C0GGzs7s4KRT0V76t1Mxs2KFCWpfQDg
+SMG2owwtPt04N7982MBGZZ8HBUt/VwQEoxSJ5t+GfsTbefnpY6RN+nZorgclH5Hw
+5UlsvczxKL/M5xYGKLmL6xkdj6jJYjAa/vMACBAss/BAxFyEGYpccX/Xil4/AXCO
+QbLG+CshzTIlPZK+DKIJ/rxt09FkLJYoq3IzWU3+I9TeJql4CXBQ5EEUFslUzlj2
+MYZRNZX+SxukgLi0/CsrdIQognTjLwLHjL3l6l5uapmQ2On9P7IM9kUQ1PJ8t6VJ
+3f8eoiez4gPNWY/rsd3vWdBK9G8bBytC8B9sLu4ZDhQDEEb4Y1wa7nzkyCFrEhAr
+id7z7eWFvvO3w0dE85NbN1GMyav5h7P/cZliEO9sm9nYXQJJXEhMG6o7K0bbI0LS
+glhUdrHCa43WKi1b6714TSiueGnzZBP6WrK9fpfbnPUjha/S56zPesd4MLUxxnC6
+9uiL0o2nAnigB9d6+FjTvInW1RNW2ld+1bc0SSpVe3Gnv3ZHxhSJ1D7nJ6vfSWGw
+53JWk+e9LhPpk7A3bCwRVOtZohhqkYVAvmhRrZUiF0W+prOqxRUFXVUhlEsRpgzI
+UA3M+ZM7vcPU+jwG/yVV1zko3I20vb41//kErUg6fYfOCq/T2e40IWsHxO4yEBVC
+Gl/JYUC/DzCiAQsyDXs+Vbd5a7dzLVPNo1zlNl4jI0qqhzfRL2HLvBdHbGRvXi+q
+fh0SdTTzXEi58i/EgIq/gRXWUogMK6CgJN9TMCgi1nWLC24KyFsw407i3/6gnYtu
+D3mPFBLgSz86Ln5sPSsKTSeSUJpuwlabDCg8+XxX69t581+rqTp/DdUYCtcmwP6R
+llJrydFSPwa20jY9X4hi9bpSEOCVJ9QgcpWrQbxdo9Qdswkji2QQg92f1KRABhcc
+Ijmie7Co93h2BWNqjilydX9DN9TBKOJ/IjuqS3hYwIt3oqhm7DPUc09OKRi5++Db
+QyqJTDbPfiC/S0D7vPAc6Yx3Iza9LXHOEK4Mww5jnFtY3dvrxG+a4tTJVVHOQytI
+fCKl6C+TuBor0KvawU5FAPzoHtIRx49JKv4GMiLCcqoHTo3AmdQQawWgoOMR9kcf
+ANOKwDNdpOq9RZaTLAc=
 -----END PGP MESSAGE-----"#, (true, true))]
     // GnuPG uses a legacy packet format that was obsoleted back in 1998 (RFC2440);
     // despite RFC9580 stating "The Legacy packet format SHOULD NOT be used to generate new data".
