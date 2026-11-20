@@ -1,3 +1,8 @@
+## 0.7.10 - 2026-11-20
+
+### Bug Fixes
+
+- Accept messages without CRC24 checksum (#291)
 ## 0.7.9 - 2026-11-19
 
 ### Bug Fixes
